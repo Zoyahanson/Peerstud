@@ -7,11 +7,26 @@ import { useRouter } from "next/navigation";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return Boolean(localStorage.getItem("token"));
+  });
   const router = useRouter();
 
   useEffect(() => {
-    setLoggedIn(!!localStorage.getItem("token"));
+    function syncAuthState() {
+      setLoggedIn(Boolean(localStorage.getItem("token")));
+    }
+
+    window.addEventListener("storage", syncAuthState);
+    window.addEventListener("auth-changed", syncAuthState);
+
+    return () => {
+      window.removeEventListener("storage", syncAuthState);
+      window.removeEventListener("auth-changed", syncAuthState);
+    };
   }, []);
 
   return (
@@ -48,13 +63,18 @@ export default function Navbar() {
 
             {open && (
               <div className="absolute right-0 mt-2 bg-white shadow-md rounded-lg p-4 w-40">
-                <div className="hover:text-blue-600 cursor-pointer mb-2">
+                <Link
+                  href="/profile"
+                  className="block hover:text-blue-600 cursor-pointer mb-2"
+                  onClick={() => setOpen(false)}
+                >
                   My Account
-                </div>
+                </Link>
                 <div
                   className="hover:text-red-500 cursor-pointer"
                   onClick={() => {
                     localStorage.removeItem("token");
+                    window.dispatchEvent(new Event("auth-changed"));
                     setLoggedIn(false);
                     setOpen(false);
                     router.push("/");

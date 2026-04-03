@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const DEMO_USER = {
+  email: "demo@peerstud.test",
+  password: "demo1234",
+  token: "demo-token",
+};
+
 export default function Login() {
   const router = useRouter();
 
@@ -12,6 +18,14 @@ export default function Login() {
 
   const handleLogin = async () => {
     setError("");
+
+    // Local demo fallback to keep UI testable even when backend auth is unavailable.
+    if (email === DEMO_USER.email && password === DEMO_USER.password) {
+      localStorage.setItem("token", DEMO_USER.token);
+      window.dispatchEvent(new Event("auth-changed"));
+      router.push("/dashboard");
+      return;
+    }
 
     try {
       const res = await fetch("http://localhost:5000/api/login", {
@@ -31,6 +45,7 @@ export default function Login() {
 
       // Save token
       localStorage.setItem("token", data.token);
+      window.dispatchEvent(new Event("auth-changed"));
 
       // Redirect
       router.push("/dashboard");
@@ -44,6 +59,10 @@ export default function Login() {
     <main className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white p-10 rounded-2xl shadow-lg w-96">
         <h2 className="text-3xl font-bold mb-6 text-center">Welcome Back</h2>
+
+        <p className="text-xs text-gray-500 mb-4">
+          Demo login: {DEMO_USER.email} / {DEMO_USER.password}
+        </p>
 
         {error && (
           <p className="text-red-500 text-sm mb-4">{error}</p>

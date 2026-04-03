@@ -32,6 +32,7 @@ export default function Register() {
 
       // Auto login after register
       localStorage.setItem("token", data.token);
+      window.dispatchEvent(new Event("auth-changed"));
       router.push("/dashboard");
 
     } catch {
