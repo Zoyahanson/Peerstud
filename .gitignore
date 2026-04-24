@@ -11,3 +11,10 @@ node_modules/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Sensitive local credentials and exported artifacts
+backend/api/peerstud-*.json
+backend/api/*service-account*.json
+docs/*.docx.pdf
+frontend/dev*.log
+frontend/dev*.err

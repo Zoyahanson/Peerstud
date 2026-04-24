@@ -1,7 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatAllowedDomains, isAllowedSchoolEmail, loadSchoolEmailPolicy } from "../../lib/auth-policy";
+import {
+  createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
+  firebaseAuth,
+  isFirebaseConfigured,
+  sendEmailVerification,
+  signOut,
+  updateProfile,
+} from "../../lib/firebase";
 
 export default function Register() {
   const router = useRouter();
@@ -10,57 +20,75 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    loadSchoolEmailPolicy().then((policy) => setAllowedDomains(policy.allowed_domains));
+  }, []);
 
   const handleRegister = async () => {
     setError("");
+    setMessage("");
+
+    if (!isAllowedSchoolEmail(email, allowedDomains)) {
+      setError(`Register with a supported school email. Allowed domains: ${formatAllowedDomains(allowedDomains)}.`);
+      return;
+    }
+
+    if (!firebaseAuth || !isFirebaseConfigured()) {
+      setError("Firebase auth is not configured yet. Add the frontend API keys to enable registration.");
+      return;
+    }
 
     try {
-      const res = await fetch("http://localhost:5000/api/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name, email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "Registration failed");
+      setSubmitting(true);
+      const methods = await fetchSignInMethodsForEmail(firebaseAuth, email.trim().toLowerCase());
+      if (methods.length) {
+        setError("An account already exists for this school email. Try signing in instead.");
         return;
       }
 
-      // Auto login after register
-      localStorage.setItem("token", data.token);
-      window.dispatchEvent(new Event("auth-changed"));
-      router.push("/dashboard");
-
-    } catch {
-      setError("Server error");
+      const credentials = await createUserWithEmailAndPassword(firebaseAuth, email.trim().toLowerCase(), password);
+      if (name.trim()) {
+        await updateProfile(credentials.user, { displayName: name.trim() });
+      }
+      await sendEmailVerification(credentials.user);
+      await signOut(firebaseAuth);
+      setMessage("Account created. Check your school inbox and verify your email before signing in.");
+      window.setTimeout(() => router.push("/login"), 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white p-10 rounded-2xl shadow-lg w-96">
-        <h2 className="text-3xl font-bold mb-6 text-center">Create Account</h2>
+    <main className="page-main flex items-center justify-center px-6">
+      <div className="page-card w-full max-w-md p-10">
+        <h2 className="text-3xl font-bold mb-3 text-center text-gray-950">Create Account</h2>
+
+        <p className="text-sm text-gray-700 mb-5 text-center">School email registration.</p>
 
         {error && (
-          <p className="text-red-500 text-sm mb-4">{error}</p>
+          <p className="text-red-600 text-sm mb-4">{error}</p>
         )}
+        {message && <p className="text-green-700 text-sm mb-4">{message}</p>}
 
         <input
           type="text"
           placeholder="Full Name"
-          className="w-full mb-4 p-3 border rounded-lg"
+          className="field-shell mb-4"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
 
         <input
           type="email"
-          placeholder="Email"
-          className="w-full mb-4 p-3 border rounded-lg"
+          placeholder="School email"
+          className="field-shell mb-4"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
@@ -68,17 +96,22 @@ export default function Register() {
         <input
           type="password"
           placeholder="Password"
-          className="w-full mb-6 p-3 border rounded-lg"
+          className="field-shell mb-6"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
 
         <button
           onClick={handleRegister}
-          className="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition"
+          disabled={submitting}
+          className="primary-button w-full p-3 transition disabled:opacity-60"
         >
-          Register
+          {submitting ? "Creating Account..." : "Register"}
         </button>
+
+        <p className="text-xs text-gray-700 mt-4">
+          Supported school domains: {formatAllowedDomains(allowedDomains)}
+        </p>
       </div>
     </main>
   );

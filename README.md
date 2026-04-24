@@ -29,23 +29,29 @@ PeerStud provides authenticated classroom session scheduling and profile matchin
 	uvicorn backend.main:app --reload
 	```
 
-## Frontend Firebase Auth Setup
+## Frontend Setup (Next.js)
 
-1. Copy Firebase config template:
+1. Install dependencies:
 
 	```bash
-	copy frontend\firebase-config.example.js frontend\firebase-config.js
+	cd frontend
+	npm install
 	```
 
-2. Fill Firebase config values in `frontend/firebase-config.js`.
-3. Serve frontend (example with VS Code Live Server) and open `frontend/index.html`.
+2. Configure frontend environment:
 
-The frontend supports:
-- Email/password signup
-- Email/password login
-- Google OAuth popup login
-- Session-scoped auth persistence
-- Authenticated call to `GET /users/me`
+	```bash
+	copy .env.local.example .env.local
+	```
+
+3. Set `NEXT_PUBLIC_API_BASE_URL` in `.env.local` (default: `http://127.0.0.1:8000`).
+4. Run the frontend:
+
+	```bash
+	npm run dev
+	```
+
+5. Open `http://localhost:3000`.
 
 ## Google Meet Configuration
 
@@ -61,9 +67,18 @@ Set environment variables:
 
 - `GET /`
 - `GET /users/me`
+- `GET /users/me/profile`
 - `PUT /users/me/profile`
+- `GET /users/me/settings`
+- `PUT /users/me/settings`
+- `GET /users/me/google-calendar/status`
+- `POST /users/me/google-calendar/link/start`
+- `POST /users/me/google-calendar/link/complete`
+- `DELETE /users/me/google-calendar/link`
 - `GET /users/{user_id}`
 - `GET /matches`
+- `GET /courses`
+- `GET /resources`
 - `GET /sessions`
 - `POST /sessions`
 

@@ -1,7 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatAllowedDomains, isAllowedSchoolEmail, loadSchoolEmailPolicy } from "../../lib/auth-policy";
+import {
+  fetchSignInMethodsForEmail,
+  firebaseAuth,
+  isFirebaseConfigured,
+  sendEmailVerification,
+  signInWithEmailAndPassword,
+  signOut,
+} from "../../lib/firebase";
 
 const DEMO_USER = {
   email: "demo@peerstud.test",
@@ -15,6 +24,15 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
+  const [loadingPolicy, setLoadingPolicy] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    loadSchoolEmailPolicy()
+      .then((policy) => setAllowedDomains(policy.allowed_domains))
+      .finally(() => setLoadingPolicy(false));
+  }, []);
 
   const handleLogin = async () => {
     setError("");
@@ -27,51 +45,64 @@ export default function Login() {
       return;
     }
 
+    if (!isAllowedSchoolEmail(email, allowedDomains)) {
+      setError(`Use your verified school email address. Allowed domains: ${formatAllowedDomains(allowedDomains)}.`);
+      return;
+    }
+
+    if (!firebaseAuth || !isFirebaseConfigured()) {
+      setError("Firebase auth is not configured yet. API keys are still required for real sign in.");
+      return;
+    }
+
     try {
-      const res = await fetch("http://localhost:5000/api/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "Login failed");
+      setSubmitting(true);
+      const methods = await fetchSignInMethodsForEmail(firebaseAuth, email.trim().toLowerCase());
+      if (!methods.length) {
+        setError("No account exists for this school email. Register first.");
         return;
       }
 
-      // Save token
-      localStorage.setItem("token", data.token);
+      const credentials = await signInWithEmailAndPassword(firebaseAuth, email.trim().toLowerCase(), password);
+      if (!credentials.user.emailVerified) {
+        await sendEmailVerification(credentials.user);
+        await signOut(firebaseAuth);
+        setError("Verify your school email before signing in. A new verification email has been sent.");
+        return;
+      }
+
+      const token = await credentials.user.getIdToken(true);
+      localStorage.setItem("token", token);
       window.dispatchEvent(new Event("auth-changed"));
-
-      // Redirect
       router.push("/dashboard");
-
     } catch (err) {
-      setError("Server error");
+      setError(err instanceof Error ? err.message : "Sign in failed.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white p-10 rounded-2xl shadow-lg w-96">
-        <h2 className="text-3xl font-bold mb-6 text-center">Welcome Back</h2>
+    <main className="page-main flex items-center justify-center px-6">
+      <div className="page-card w-full max-w-md p-10">
+        <h2 className="text-3xl font-bold mb-3 text-center text-[color:var(--foreground)]">Welcome Back</h2>
 
-        <p className="text-xs text-gray-500 mb-4">
+        <p className="text-sm text-[color:var(--ink-muted)] mb-5 text-center">School email sign in.</p>
+
+        <p className="text-xs text-[color:var(--ink-subtle)] mb-4">
           Demo login: {DEMO_USER.email} / {DEMO_USER.password}
         </p>
 
+        {loadingPolicy && <p className="text-sm text-[color:var(--ink-muted)] mb-4">Loading school email policy...</p>}
+
         {error && (
-          <p className="text-red-500 text-sm mb-4">{error}</p>
+          <p className="text-red-600 text-sm mb-4">{error}</p>
         )}
 
         <input
           type="email"
-          placeholder="Email"
-          className="w-full mb-4 p-3 border rounded-lg"
+          placeholder="School email"
+          className="field-shell mb-4"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
@@ -79,16 +110,17 @@ export default function Login() {
         <input
           type="password"
           placeholder="Password"
-          className="w-full mb-6 p-3 border rounded-lg"
+          className="field-shell mb-6"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
 
         <button
           onClick={handleLogin}
-          className="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition"
+          disabled={submitting}
+          className="primary-button w-full p-3 transition disabled:opacity-60"
         >
-          Sign In
+          {submitting ? "Signing In..." : "Sign In"}
         </button>
       </div>
     </main>

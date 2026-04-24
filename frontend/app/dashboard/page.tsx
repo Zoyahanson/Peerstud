@@ -1,492 +1,217 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { ArrowRight, BellRing, CalendarClock, LayoutPanelTop, Sparkles } from "lucide-react";
 import Sidebar from "../../components/sidebar";
+import { authedFetch, getToken } from "../../lib/api";
+
+const DEMO_TOKEN = "demo-token";
+
+type UserSettings = {
+  desktop_reminders: boolean;
+  reminder_minutes_before: number;
+};
 
 type SessionItem = {
   id: string;
-  course_id: string;
-  host_user_id: string;
+  topic_focus: string;
   classroom_name: string;
   start_time: string;
-  end_time: string;
+  joined: boolean;
+  participant_count: number;
   meet_link: string | null;
-  status: string;
 };
 
-type CalendarStatus = {
-  linked: boolean;
-  google_email: string | null;
-};
+function pickUpcomingSessions(sessionItems: SessionItem[], currentTime: number): SessionItem[] {
+  return sessionItems
+    .filter((session) => new Date(session.start_time).getTime() >= currentTime)
+    .sort((left, right) => new Date(left.start_time).getTime() - new Date(right.start_time).getTime())
+    .slice(0, 3);
+}
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
-const DEMO_TOKEN = "demo-token";
+const QUICK_ACTIONS = [
+  { href: "/dashboard/virtual-sessions", label: "Schedule sessions" },
+  { href: "/dashboard/tutors", label: "Find tutors" },
+  { href: "/dashboard/progress", label: "Track growth" },
+  { href: "/dashboard/chat", label: "Open chat" },
+];
 
 export default function Dashboard() {
   const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
+  const [token] = useState<string | null>(() => getToken());
   const isDemo = token === DEMO_TOKEN;
-
-  const [stats, setStats] = useState({
-    groups: 0,
-    resources: 0,
-    sessions: 0,
-  });
-  const [calendarStatus, setCalendarStatus] = useState<CalendarStatus>({
-    linked: false,
-    google_email: null,
-  });
-  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [upcomingSessions, setUpcomingSessions] = useState<SessionItem[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [busyLinking, setBusyLinking] = useState(false);
-  const [creatingSession, setCreatingSession] = useState(false);
-
-  const [courseId, setCourseId] = useState("");
-  const [classroomName, setClassroomName] = useState("Study Hall A");
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const [manualMeetLink, setManualMeetLink] = useState("");
-  const [generateMeet, setGenerateMeet] = useState(true);
-
-  const sessionCount = useMemo(() => sessions.length, [sessions]);
-
-  const authedFetch = useCallback(
-    async (path: string, init?: RequestInit) => {
-      if (!token) {
-        throw new Error("Missing auth token");
-      }
-
-      const headers = new Headers(init?.headers);
-      headers.set("Authorization", `Bearer ${token}`);
-      if (init?.body && !headers.has("Content-Type")) {
-        headers.set("Content-Type", "application/json");
-      }
-
-      const response = await fetch(`${API_BASE_URL}${path}`, {
-        ...init,
-        headers,
-      });
-
-      const raw = await response.text();
-      const payload = raw ? JSON.parse(raw) : null;
-      if (!response.ok) {
-        const detail = payload?.detail ?? payload?.message ?? `Request failed (${response.status})`;
-        throw new Error(String(detail));
-      }
-      return payload;
-    },
-    [token],
-  );
-
-  const applySessionStats = useCallback((nextSessions: SessionItem[]) => {
-    setStats({
-      groups: Math.max(1, Math.min(5, nextSessions.length || 1)),
-      resources: nextSessions.filter((item) => Boolean(item.meet_link)).length,
-      sessions: nextSessions.length,
-    });
-  }, []);
-
-  const loadCalendarStatus = useCallback(async () => {
-    const result = await authedFetch("/users/me/google-calendar/status");
-    setCalendarStatus({
-      linked: Boolean(result?.linked),
-      google_email: result?.google_email ?? null,
-    });
-  }, [authedFetch]);
-
-  const loadSessions = useCallback(async () => {
-    const result = (await authedFetch("/sessions")) as SessionItem[];
-    setSessions(result);
-    applySessionStats(result);
-  }, [applySessionStats, authedFetch]);
 
   useEffect(() => {
-    const localToken = localStorage.getItem("token");
-    if (!localToken) {
+    if (!token && !isDemo) {
       router.push("/login");
-      return;
     }
-    setToken(localToken);
-  }, [router]);
+  }, [isDemo, router, token]);
 
   useEffect(() => {
     if (!token) {
       return;
     }
 
-    if (isDemo) {
-      const now = new Date();
-      const demoStart = new Date(now.getTime() + 60 * 60 * 1000);
-      const demoEnd = new Date(now.getTime() + 90 * 60 * 1000);
-      const demoSessions: SessionItem[] = [
-        {
-          id: "demo-session-1",
-          course_id: "00000000-0000-0000-0000-000000000001",
-          host_user_id: "00000000-0000-0000-0000-000000000001",
-          classroom_name: "Demo Study Room",
-          start_time: demoStart.toISOString(),
-          end_time: demoEnd.toISOString(),
-          meet_link: "https://meet.google.com/demo-link",
-          status: "scheduled",
-        },
-      ];
-
-      setSessions(demoSessions);
-      setCalendarStatus({ linked: false, google_email: null });
-      applySessionStats(demoSessions);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setStatusMessage("");
-    Promise.all([loadCalendarStatus(), loadSessions()])
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : "Failed to load dashboard data";
-        setStatusMessage(message);
+    Promise.all([
+      authedFetch<UserSettings>("/users/me/settings"),
+      authedFetch<SessionItem[]>("/sessions"),
+    ])
+      .then(([settingsResponse, sessionsResponse]) => {
+        setSettings(settingsResponse);
+        setUpcomingSessions(pickUpcomingSessions(sessionsResponse, Date.now()));
       })
-      .finally(() => setLoading(false));
-  }, [applySessionStats, isDemo, loadCalendarStatus, loadSessions, token]);
-
-  const waitForOAuthMessage = useCallback(() => {
-    return new Promise<{ code: string | null; state: string | null; error: string | null }>(
-      (resolve, reject) => {
-        const allowedOrigins = new Set([
-          window.location.origin,
-          "http://127.0.0.1:5500",
-          "http://localhost:5500",
-        ]);
-
-        const timeoutId = window.setTimeout(() => {
-          window.removeEventListener("message", onMessage);
-          reject(new Error("OAuth flow timed out."));
-        }, 180000);
-
-        function onMessage(event: MessageEvent) {
-          if (!allowedOrigins.has(event.origin)) {
-            return;
-          }
-
-          const payload = event.data;
-          if (!payload || payload.type !== "google-calendar-oauth") {
-            return;
-          }
-
-          window.clearTimeout(timeoutId);
-          window.removeEventListener("message", onMessage);
-          resolve({
-            code: payload.code ?? null,
-            state: payload.state ?? null,
-            error: payload.error ?? null,
-          });
-        }
-
-        window.addEventListener("message", onMessage);
-      },
-    );
-  }, []);
-
-  const handleLinkCalendar = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-
-    if (isDemo) {
-      setStatusMessage("Demo mode uses mock data only. Use a real token to link Google Calendar.");
-      return;
-    }
-
-    try {
-      setBusyLinking(true);
-      setStatusMessage("");
-      const start = await authedFetch("/users/me/google-calendar/link/start", { method: "POST" });
-      const authWindow = window.open(
-        String(start.authorization_url),
-        "google-calendar-link",
-        "width=520,height=720",
-      );
-      if (!authWindow) {
-        throw new Error("Failed to open OAuth window. Allow pop-ups and try again.");
-      }
-
-      const oauthPayload = await waitForOAuthMessage();
-      if (oauthPayload.error) {
-        throw new Error(oauthPayload.error);
-      }
-      if (!oauthPayload.code || !oauthPayload.state) {
-        throw new Error("Missing OAuth code or state from callback.");
-      }
-
-      await authedFetch("/users/me/google-calendar/link/complete", {
-        method: "POST",
-        body: JSON.stringify({
-          code: oauthPayload.code,
-          state: oauthPayload.state,
-        }),
+      .catch((error: unknown) => {
+        setStatusMessage(error instanceof Error ? error.message : "Failed to load dashboard overview.");
       });
-
-      await loadCalendarStatus();
-      setStatusMessage("Google Calendar linked successfully.");
-    } catch (error: unknown) {
-      setStatusMessage(error instanceof Error ? error.message : "Failed to link Google Calendar.");
-    } finally {
-      setBusyLinking(false);
-    }
-  }, [authedFetch, isDemo, loadCalendarStatus, token, waitForOAuthMessage]);
-
-  const handleUnlinkCalendar = useCallback(async () => {
-    if (!token || isDemo) {
-      setStatusMessage("Demo mode has no linked Google account.");
-      return;
-    }
-
-    try {
-      setBusyLinking(true);
-      setStatusMessage("");
-      await authedFetch("/users/me/google-calendar/link", { method: "DELETE" });
-      setCalendarStatus({ linked: false, google_email: null });
-      setStatusMessage("Google Calendar unlinked.");
-    } catch (error: unknown) {
-      setStatusMessage(error instanceof Error ? error.message : "Failed to unlink Google Calendar.");
-    } finally {
-      setBusyLinking(false);
-    }
-  }, [authedFetch, isDemo, token]);
-
-  const handleCreateSession = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-
-    if (!courseId || !classroomName || !startTime || !endTime) {
-      setStatusMessage("Fill course ID, classroom name, start time, and end time.");
-      return;
-    }
-
-    if (isDemo) {
-      const demoSession: SessionItem = {
-        id: `demo-${Date.now()}`,
-        course_id: courseId,
-        host_user_id: "demo-user",
-        classroom_name: classroomName,
-        start_time: new Date(startTime).toISOString(),
-        end_time: new Date(endTime).toISOString(),
-        meet_link: generateMeet ? "https://meet.google.com/demo-created" : manualMeetLink || null,
-        status: "scheduled",
-      };
-      const updated = [demoSession, ...sessions];
-      setSessions(updated);
-      applySessionStats(updated);
-      setStatusMessage("Demo session created.");
-      return;
-    }
-
-    try {
-      setCreatingSession(true);
-      setStatusMessage("");
-
-      const created = (await authedFetch("/sessions", {
-        method: "POST",
-        body: JSON.stringify({
-          course_id: courseId,
-          classroom_name: classroomName,
-          start_time: new Date(startTime).toISOString(),
-          end_time: new Date(endTime).toISOString(),
-          meet_link: manualMeetLink || null,
-          generate_meet: generateMeet,
-        }),
-      })) as SessionItem;
-
-      const updated = [created, ...sessions];
-      setSessions(updated);
-      applySessionStats(updated);
-      setStatusMessage(created.meet_link ? "Session created with Meet link." : "Session created.");
-    } catch (error: unknown) {
-      setStatusMessage(error instanceof Error ? error.message : "Failed to create session.");
-    } finally {
-      setCreatingSession(false);
-    }
-  }, [
-    applySessionStats,
-    authedFetch,
-    classroomName,
-    courseId,
-    endTime,
-    generateMeet,
-    isDemo,
-    manualMeetLink,
-    sessions,
-    startTime,
-    token,
-  ]);
+  }, [token]);
+  const quickActions = QUICK_ACTIONS.slice(0, 3);
 
   return (
-    <div className="flex bg-gray-100 min-h-screen">
+    <div className="page-shell">
       <Sidebar />
 
-      <main className="flex-1 p-10">
-        <motion.h1
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-3xl font-bold mb-8"
-        >
-          Welcome Back 👋
-        </motion.h1>
+      <main className="page-main">
+        <div className="page-content">
+          {statusMessage && <p className="mb-4 text-sm text-[color:var(--accent-strong)]">{statusMessage}</p>}
 
-        {loading && <p className="text-sm text-gray-600 mb-6">Loading dashboard...</p>}
+          <section className="page-header">
+            <h1 className="page-title">Dashboard</h1>
+            <p className="page-subtitle">Your study activity in one place.</p>
+          </section>
 
-        {statusMessage && (
-          <p className="text-sm mb-6 text-gray-700 bg-white p-3 rounded-lg border border-gray-200">
-            {statusMessage}
-          </p>
-        )}
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6"
-        >
-          <div className="bg-white p-6 rounded-2xl shadow border border-gray-100">
-            <h3 className="text-lg text-gray-800 font-semibold mb-2">Active Groups</h3>
-            <p className="text-3xl font-bold text-blue-600">{stats.groups}</p>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl shadow border border-gray-100">
-            <h3 className="text-lg text-gray-800 font-semibold mb-2">Resources Shared</h3>
-            <p className="text-3xl font-bold text-green-600">{stats.resources}</p>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl shadow border border-gray-100">
-            <h3 className="text-lg text-gray-800 font-semibold mb-2">Upcoming Sessions</h3>
-            <p className="text-3xl font-bold text-purple-600">{sessionCount || stats.sessions}</p>
-          </div>
-        </motion.div>
-
-        <section className="mt-8 grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow">
-            <h2 className="text-xl font-semibold mb-3">Google Calendar</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              {calendarStatus.linked
-                ? `Linked as ${calendarStatus.google_email ?? "connected account"}`
-                : "Not linked yet. Link your Google account to auto-create Meet links."}
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleLinkCalendar}
-                disabled={busyLinking}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60"
-              >
-                {busyLinking ? "Linking..." : "Link Google Calendar"}
-              </button>
-
-              <button
-                onClick={handleUnlinkCalendar}
-                disabled={busyLinking}
-                className="border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 disabled:opacity-60"
-              >
-                Unlink
-              </button>
-            </div>
-
-            <p className="text-xs text-gray-500 mt-4">Callback route for this frontend: /google-calendar-callback</p>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl shadow">
-            <h2 className="text-xl font-semibold mb-3">Create Study Session</h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input
-                className="border rounded-lg p-2"
-                placeholder="Course ID (UUID)"
-                value={courseId}
-                onChange={(event) => setCourseId(event.target.value)}
-              />
-              <input
-                className="border rounded-lg p-2"
-                placeholder="Classroom name"
-                value={classroomName}
-                onChange={(event) => setClassroomName(event.target.value)}
-              />
-              <input
-                type="datetime-local"
-                className="border rounded-lg p-2"
-                value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
-              />
-              <input
-                type="datetime-local"
-                className="border rounded-lg p-2"
-                value={endTime}
-                onChange={(event) => setEndTime(event.target.value)}
-              />
-            </div>
-
-            <div className="mt-3">
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={generateMeet}
-                  onChange={(event) => setGenerateMeet(event.target.checked)}
-                />
-                Generate Google Meet automatically
-              </label>
-            </div>
-
-            {!generateMeet && (
-              <input
-                className="border rounded-lg p-2 w-full mt-3"
-                placeholder="Manual Meet link (optional)"
-                value={manualMeetLink}
-                onChange={(event) => setManualMeetLink(event.target.value)}
-              />
-            )}
-
-            <button
-              onClick={handleCreateSession}
-              disabled={creatingSession}
-              className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-60"
-            >
-              {creatingSession ? "Creating..." : "Create Session"}
-            </button>
-          </div>
-        </section>
-
-        <section className="mt-8 bg-white p-6 rounded-2xl shadow">
-          <h2 className="text-xl font-semibold mb-4">Study Sessions</h2>
-
-          {sessions.length === 0 ? (
-            <p className="text-sm text-gray-500">No sessions yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {sessions.map((item) => (
-                <div key={item.id} className="border border-gray-200 rounded-lg p-3">
-                  <p className="font-medium">{item.classroom_name}</p>
-                  <p className="text-sm text-gray-600">Course: {item.course_id}</p>
-                  <p className="text-sm text-gray-600">
-                    {new Date(item.start_time).toLocaleString()} to {new Date(item.end_time).toLocaleString()}
-                  </p>
-                  <p className="text-sm text-gray-600">Status: {item.status}</p>
-                  {item.meet_link && (
-                    <a
-                      href={item.meet_link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      Open Meet Link
-                    </a>
-                  )}
+          <section className="asym-grid items-start">
+            <div className="page-card-strong overflow-hidden p-6 sm:p-8 lg:p-10">
+              <div className="flex flex-col gap-10 xl:flex-row xl:items-end xl:justify-between">
+                <div className="max-w-3xl">
+                  <p className="section-kicker">Overview</p>
+                  <h2 className="mt-4 max-w-2xl text-3xl font-black tracking-tight text-[color:var(--foreground)] sm:text-4xl">
+                    Keep sessions, reminders, and shortcuts close.
+                  </h2>
                 </div>
-              ))}
+
+                <div className="page-card w-full max-w-md p-6">
+                  <p className="section-kicker">Next Session</p>
+                  <p className="mt-3 text-2xl font-bold text-[color:var(--foreground)]">
+                    {upcomingSessions[0]?.topic_focus ?? "No session booked yet"}
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-[color:var(--ink-muted)]">
+                    {upcomingSessions[0]
+                      ? `${upcomingSessions[0].classroom_name} • ${new Date(upcomingSessions[0].start_time).toLocaleString()}`
+                      : "Create or join a session."}
+                  </p>
+                  <button
+                    onClick={() => router.push("/dashboard/virtual-sessions")}
+                    className="primary-button mt-6 inline-flex items-center gap-2 px-5 py-3 text-sm hover:-translate-y-0.5"
+                  >
+                    Open Scheduling
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
-        </section>
+
+            <div className="space-y-4">
+              <article className="glass-panel rounded-[1.8rem] p-6">
+                <div className="flex items-start gap-4">
+                  <div className="rounded-2xl bg-[color:var(--accent-soft)] p-3 text-[color:var(--accent-strong)]">
+                    <LayoutPanelTop size={22} />
+                  </div>
+                  <div>
+                    <p className="section-kicker">Quick Access</p>
+                    <p className="mt-2 text-lg font-semibold text-[color:var(--foreground)]">
+                      Standard navigation is locked in.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              <article className="page-card rounded-[1.8rem] border p-6 shadow-sm">
+                <div className="flex items-start gap-4">
+                  <div className="rounded-2xl bg-white/75 p-3 text-[color:var(--accent-strong)]">
+                    <BellRing size={22} />
+                  </div>
+                  <div>
+                    <p className="section-kicker">Reminder Stack</p>
+                    <p className="mt-2 text-lg font-semibold text-[color:var(--foreground)]">
+                      {settings?.desktop_reminders ? `${settings.reminder_minutes_before} minute alerts are active.` : "Desktop reminders are off."}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section className="mt-8 asym-grid items-start">
+            <div className="glass-panel-strong rounded-[2rem] p-6 sm:p-8">
+              <div className="mb-6 flex items-center justify-between gap-4">
+                <div>
+                  <p className="section-kicker">Quick Actions</p>
+                  <h2 className="mt-2 text-2xl font-bold text-[color:var(--foreground)]">Your campus rhythm</h2>
+                </div>
+                <Sparkles className="text-[color:var(--accent)]" size={22} />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-[1.18fr_0.82fr]">
+                <button
+                  onClick={() => router.push(quickActions[0]?.href ?? "/dashboard/virtual-sessions")}
+                  className="group rounded-[1.8rem] bg-[color:var(--foreground)] p-6 text-left text-white shadow-sm"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Primary Action</p>
+                  <h3 className="mt-3 text-2xl font-bold">{quickActions[0]?.label ?? "Schedule sessions"}</h3>
+                </button>
+
+                <div className="grid gap-4">
+                  {quickActions.slice(1).map((item) => (
+                    <button
+                      key={item.href}
+                      onClick={() => router.push(item.href)}
+                      className="glass-panel rounded-[1.5rem] p-5 text-left hover:-translate-y-0.5"
+                    >
+                      <p className="soft-label">Shortcut</p>
+                      <p className="mt-2 text-lg font-semibold text-[color:var(--foreground)]">{item.label}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-panel-strong rounded-[2rem] p-6">
+              <div className="flex items-center gap-3">
+                <CalendarClock className="text-[color:var(--accent-strong)]" size={22} />
+                <div>
+                  <p className="section-kicker">Upcoming Sessions</p>
+                  <h2 className="mt-1 text-2xl font-bold text-[color:var(--foreground)]">What’s on deck</h2>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {upcomingSessions.map((session) => (
+                  <article
+                    key={session.id}
+                    className="rounded-[1.4rem] border border-[color:var(--border)] bg-white/70 p-4"
+                  >
+                    <p className="text-sm font-semibold text-[color:var(--foreground)]">{session.topic_focus}</p>
+                    <p className="mt-1 text-sm text-[color:var(--ink-muted)]">
+                      {session.classroom_name} • {new Date(session.start_time).toLocaleString()}
+                    </p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--accent-strong)]">
+                      {session.participant_count} participants
+                    </p>
+                  </article>
+                ))}
+                {upcomingSessions.length === 0 && (
+                  <p className="rounded-[1.4rem] bg-white/70 p-4 text-sm text-[color:var(--ink-muted)]">
+                    No upcoming sessions yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
       </main>
     </div>
   );

@@ -21,6 +21,7 @@ class GoogleMeetService:
         start_time: datetime,
         end_time: datetime,
         attendee_emails: list[str],
+        reminder_minutes_before: int | None = None,
     ) -> dict[str, str | None]:
         if self.mock_mode:
             fake_id = str(uuid4())
@@ -67,6 +68,14 @@ class GoogleMeetService:
                 }
             },
         }
+        if reminder_minutes_before is not None:
+            event["reminders"] = {
+                "useDefault": False,
+                "overrides": [
+                    {"method": "popup", "minutes": reminder_minutes_before},
+                    {"method": "email", "minutes": reminder_minutes_before},
+                ],
+            }
 
         created_event = (
             calendar_service.events()

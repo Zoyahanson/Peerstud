@@ -147,6 +147,7 @@ def create_meet_event_for_linked_account(
     start_time: datetime,
     end_time: datetime,
     attendee_emails: list[str],
+    reminder_minutes_before: int | None = None,
 ) -> dict[str, str | None]:
     access_token = ensure_fresh_access_token(connection)
     creds = Credentials(token=access_token)
@@ -166,6 +167,14 @@ def create_meet_event_for_linked_account(
     }
     if attendee_emails:
         event["attendees"] = [{"email": email} for email in attendee_emails]
+    if reminder_minutes_before is not None:
+        event["reminders"] = {
+            "useDefault": False,
+            "overrides": [
+                {"method": "popup", "minutes": reminder_minutes_before},
+                {"method": "email", "minutes": reminder_minutes_before},
+            ],
+        }
 
     try:
         created_event = (

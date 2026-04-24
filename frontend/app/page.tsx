@@ -1,34 +1,37 @@
-import Image from "next/image";
-import Navbar from "../components/navbar";
-
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-center px-6">
-      <h1 className="text-5xl font-extrabold text-gray-900 mb-6">
-        Study Smarter Together
-      </h1>
+    <main className="page-main">
+      <section className="page-content">
+        <div className="page-card-strong p-6 text-left sm:p-8 lg:p-10">
+          <h1 className="page-title max-w-3xl">PeerStud</h1>
+          <p className="page-subtitle max-w-2xl">Schedule sessions, find tutors, and stay organized.</p>
 
-      <p className="text-lg text-gray-600 max-w-2xl mb-8">
-        PeerStud connects students to collaborate, share resources, and stay
-        productive — all in one place.
-      </p>
+          <form action="/dashboard/tutors" method="GET" className="mt-8 grid gap-3 rounded-[1.7rem] border border-[color:var(--border)] bg-white/75 p-4 sm:grid-cols-[1fr_auto]" role="search" aria-label="Search tutors by subject">
+            <label className="sr-only" htmlFor="home-subject-search">Search by subject or course</label>
+            <input
+              id="home-subject-search"
+              name="subject"
+              type="search"
+              placeholder="Search subjects, courses, or tutor strengths"
+              className="field-shell min-h-12 text-sm"
+            />
+            <button type="submit" className="primary-button min-h-12 px-5 text-sm hover:-translate-y-0.5">
+              Search Tutors
+            </button>
+          </form>
 
-      <div className="space-x-4">
-        <a
-          href="/register"
-          className="bg-blue-600 text-white px-6 py-3 rounded-xl text-lg hover:bg-blue-700 transition"
-        >
-          Get Started
-        </a>
-
-        <a
-          href="/login"
-          className="border border-gray-300 px-6 py-3 rounded-xl text-lg hover:bg-gray-100 transition"
-        >
-          Sign In
-        </a>
-      </div>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Link href="/register" className="primary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
+              Start Scheduling
+            </Link>
+            <Link href="/login" className="secondary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
+              Sign In
+            </Link>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

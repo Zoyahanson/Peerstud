@@ -1,11 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from backend.api.catalog import router as catalog_router
+from backend.api.chat import router as chat_router
+from backend.api.leaderboard import router as leaderboard_router
 from backend.api.matches import router as matches_router
 from backend.api.sessions import router as sessions_router
+from backend.api.study_groups import router as study_groups_router
+from backend.api.tutors import router as tutors_router
 from backend.api.users import router as users_router
 from backend.config import settings
-from backend.db import Base, engine
+from backend.db import Base, engine, ensure_runtime_schema, uploads_dir
 
 app = FastAPI(title=settings.app_name)
 
@@ -21,6 +27,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_runtime_schema()
 
 
 @app.get("/")
@@ -31,3 +38,9 @@ def root() -> dict[str, str]:
 app.include_router(users_router)
 app.include_router(matches_router)
 app.include_router(sessions_router)
+app.include_router(catalog_router)
+app.include_router(study_groups_router)
+app.include_router(chat_router)
+app.include_router(leaderboard_router)
+app.include_router(tutors_router)
+app.mount("/uploads", StaticFiles(directory=str(uploads_dir), check_dir=False), name="uploads")

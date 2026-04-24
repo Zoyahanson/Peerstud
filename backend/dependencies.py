@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from backend.auth import verify_bearer_token
+from backend.auth import validate_school_email_claims, verify_bearer_token
 from backend.db import get_db
 from backend.models import User
 
@@ -25,8 +25,8 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     firebase_uid = token_payload.get("uid")
-    email = token_payload.get("email")
-    if not firebase_uid or not email:
+    email = validate_school_email_claims(token_payload)
+    if not firebase_uid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token payload missing required claims",
