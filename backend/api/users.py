@@ -8,6 +8,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.api.schemas import (
+    FriendAddRequest,
+    FriendEntryResponse,
     GoogleCalendarLinkCompleteRequest,
     GoogleCalendarLinkStartResponse,
     GoogleCalendarStatusResponse,
@@ -15,18 +17,20 @@ from backend.api.schemas import (
     ProgressPointResponse,
     SessionHistoryItemResponse,
     UserAnalyticsResponse,
-    UserProfileDetailResponse,
     UserProgressResponse,
+    UserProfileDetailResponse,
     UserProfileResponse,
     UserSettingsResponse,
     UserSettingsUpdate,
     UserProfileUpsert,
     UserResponse,
+    UserSearchResult,
 )
 from backend.auth import get_allowed_school_domains
 from backend.db import get_db
 from backend.dependencies import get_current_user
 from backend.models import (
+    Friendship,
     GoogleCalendarConnection,
     Resource,
     Session as StudySession,
@@ -98,7 +102,7 @@ def get_auth_policy() -> SchoolEmailPolicyResponse:
 def get_me(current_user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse(
         id=current_user.id,
-        firebase_uid=current_user.firebase_uid,
+        auth_uid=current_user.auth_uid,
         email=current_user.email,
         full_name=current_user.full_name,
     )
@@ -345,6 +349,10 @@ def upsert_profile(
             bio=payload.bio,
             interests=payload.interests,
             embedding=payload.embedding,
+            offer_text=payload.offer_text,
+            need_text=payload.need_text,
+            offer_vector=payload.offer_vector,
+            need_vector=payload.need_vector,
         )
     else:
         profile.year_of_study = payload.year_of_study
@@ -361,6 +369,10 @@ def upsert_profile(
         profile.bio = payload.bio
         profile.interests = payload.interests
         profile.embedding = payload.embedding
+        profile.offer_text = payload.offer_text
+        profile.need_text = payload.need_text
+        profile.offer_vector = payload.offer_vector
+        profile.need_vector = payload.need_vector
 
     db.add(current_user)
     db.add(profile)
@@ -387,7 +399,11 @@ def upsert_profile(
         ratings_count=profile.ratings_count,
         bio=profile.bio,
         interests=profile.interests,
+        offer_text=profile.offer_text,
+        need_text=profile.need_text,
         has_embedding=profile.embedding is not None,
+        has_offer_vector=profile.offer_vector is not None,
+        has_need_vector=profile.need_vector is not None,
     )
 
 
@@ -416,7 +432,11 @@ def get_my_profile(
             ratings_count=0,
             bio=None,
             interests=None,
+            offer_text=None,
+            need_text=None,
             has_embedding=False,
+            has_offer_vector=False,
+            has_need_vector=False,
         )
 
     return UserProfileDetailResponse(
@@ -437,7 +457,11 @@ def get_my_profile(
         ratings_count=profile.ratings_count,
         bio=profile.bio,
         interests=profile.interests,
+        offer_text=profile.offer_text,
+        need_text=profile.need_text,
         has_embedding=profile.embedding is not None,
+        has_offer_vector=profile.offer_vector is not None,
+        has_need_vector=profile.need_vector is not None,
     )
 
 
@@ -492,6 +516,111 @@ def update_my_settings(
     )
 
 
+# ── Friends ──────────────────────────────────────────────────────────────────
+
+@router.get("/search", response_model=list[UserSearchResult])
+def search_users(
+    q: str,
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[UserSearchResult]:
+    """Search all users by name or email (excludes the caller)."""
+    if not q or not q.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="q is required")
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="limit must be 1-100")
+    pattern = f"%{q.strip()}%"
+    users = (
+        db.query(User)
+        .filter(
+            User.id != current_user.id,
+            (func.lower(User.full_name).ilike(pattern.lower())) | (func.lower(User.email).ilike(pattern.lower())),
+        )
+        .order_by(User.full_name.asc().nulls_last(), User.email.asc())
+        .limit(limit)
+        .all()
+    )
+    return [UserSearchResult(user_id=u.id, full_name=u.full_name, email=u.email) for u in users]
+
+
+@router.get("/me/friends", response_model=list[FriendEntryResponse])
+def list_friends(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[FriendEntryResponse]:
+    friendships = (
+        db.query(Friendship)
+        .filter(Friendship.user_id == current_user.id)
+        .all()
+    )
+    result = []
+    for fs in friendships:
+        friend_user = db.query(User).filter(User.id == fs.friend_user_id).first()
+        if not friend_user:
+            continue
+        result.append(
+            FriendEntryResponse(
+                user_id=friend_user.id,
+                full_name=friend_user.full_name,
+                email=friend_user.email,
+                mutual_sessions=0,
+                streak_days=0,
+            )
+        )
+    return result
+
+
+@router.post("/me/friends", status_code=status.HTTP_201_CREATED, response_model=FriendEntryResponse)
+def add_friend(
+    payload: FriendAddRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FriendEntryResponse:
+    friend_id = str(payload.friend_user_id)
+    if friend_id == str(current_user.id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot add yourself")
+    friend_user = db.query(User).filter(User.id == friend_id).first()
+    if not friend_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    existing = (
+        db.query(Friendship)
+        .filter(Friendship.user_id == current_user.id, Friendship.friend_user_id == friend_id)
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already friends")
+    friendship = Friendship(user_id=current_user.id, friend_user_id=friend_id)
+    db.add(friendship)
+    db.commit()
+    return FriendEntryResponse(
+        user_id=friend_user.id,
+        full_name=friend_user.full_name,
+        email=friend_user.email,
+        mutual_sessions=0,
+        streak_days=0,
+    )
+
+
+@router.delete("/me/friends/{friend_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_friend(
+    friend_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    friendship = (
+        db.query(Friendship)
+        .filter(Friendship.user_id == current_user.id, Friendship.friend_user_id == friend_id)
+        .first()
+    )
+    if not friendship:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Friendship not found")
+    db.delete(friendship)
+    db.commit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user_by_id(
     user_id: str,
@@ -504,7 +633,7 @@ def get_user_by_id(
 
     return UserResponse(
         id=user.id,
-        firebase_uid=user.firebase_uid,
+        auth_uid=user.auth_uid,
         email=user.email,
         full_name=user.full_name,
     )

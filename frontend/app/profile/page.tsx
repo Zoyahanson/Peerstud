@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, UserMinus, UserPlus, Users } from "lucide-react";
 import { authedFetch, getToken } from "../../lib/api";
@@ -99,6 +99,29 @@ export default function ProfilePage() {
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [friendStatusMsg, setFriendStatusMsg] = useState("");
+  const friendSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Live debounced search when friendSearch changes
+  useEffect(() => {
+    if (friendSearchDebounceRef.current) clearTimeout(friendSearchDebounceRef.current);
+    const q = friendSearch.trim();
+    if (!q) {
+      setSearchResults([]);
+      return;
+    }
+    friendSearchDebounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const results = await authedFetch<SearchResult[]>(`/users/search?q=${encodeURIComponent(q)}&limit=20`);
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 150);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [friendSearch]);
 
   useEffect(() => {
     const token = getToken();
@@ -144,11 +167,12 @@ export default function ProfilePage() {
   }, [router]);
 
   async function handleSearchUsers() {
-    if (!friendSearch.trim()) return;
+    const q = friendSearch.trim();
+    if (!q) return;
     try {
       setSearching(true);
       setFriendStatusMsg("");
-      const results = await authedFetch<SearchResult[]>(`/users/search?q=${encodeURIComponent(friendSearch)}`);
+      const results = await authedFetch<SearchResult[]>(`/users/search?q=${encodeURIComponent(q)}&limit=20`);
       setSearchResults(results);
     } catch {
       setSearchResults([]);

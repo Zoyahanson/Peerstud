@@ -8,7 +8,7 @@ from backend.api.schemas import CourseSummaryResponse, ResourceSummaryResponse
 from backend.db import get_db
 from backend.dependencies import get_current_user
 from backend.models import Course, Resource, Session as StudySession, User
-from backend.services.firebase_storage import store_resource_file
+from backend.services.resource_storage import store_resource_file
 
 
 router = APIRouter(tags=["catalog"])

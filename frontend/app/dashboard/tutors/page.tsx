@@ -1,7 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronDown, ChevronUp, Search, Sparkles, Star } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
 import { authedFetch, getToken } from "../../../lib/api";
 
@@ -29,6 +30,12 @@ type TutorEntry = {
   badges: TutorBadge[];
 };
 
+type TutorSuggestion = TutorEntry & {
+  match_score: number;
+  match_reason: string;
+  topic_overlaps: string[];
+};
+
 type TutorReview = {
   session_id: string;
   score: number;
@@ -38,6 +45,7 @@ type TutorReview = {
 };
 
 function buildQuery(filters: {
+  nameQuery: string;
   subject: string;
   gradeLevel: string;
   minRating: string;
@@ -46,6 +54,7 @@ function buildQuery(filters: {
   availableOnly: boolean;
 }): string {
   const params = new URLSearchParams();
+  if (filters.nameQuery.trim()) params.set("q", filters.nameQuery.trim());
   if (filters.subject.trim()) params.set("subject", filters.subject.trim());
   if (filters.gradeLevel.trim()) params.set("grade_level", filters.gradeLevel.trim());
   if (filters.minRating.trim()) params.set("min_rating", filters.minRating.trim());
@@ -59,22 +68,27 @@ function buildQuery(filters: {
 function TutorsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [nameQuery, setNameQuery] = useState("");
   const [subject, setSubject] = useState(() => searchParams.get("subject") ?? "");
   const [gradeLevel, setGradeLevel] = useState("");
   const [minRating, setMinRating] = useState("0");
   const [campus, setCampus] = useState("");
   const [faculty, setFaculty] = useState("");
   const [availableOnly, setAvailableOnly] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [tutors, setTutors] = useState<TutorEntry[]>([]);
+  const [suggestions, setSuggestions] = useState<TutorSuggestion[]>([]);
   const [selectedTutorId, setSelectedTutorId] = useState("");
   const [reviews, setReviews] = useState<TutorReview[]>([]);
 
   const selectedTutor = useMemo(() => tutors.find((item) => item.user_id === selectedTutorId) ?? null, [selectedTutorId, tutors]);
 
-  async function searchTutors(overrides?: Partial<{ subject: string }>) {
+  async function searchTutors(overrides?: Partial<{ subject: string; nameQuery: string }>) {
     const query = buildQuery({
+      nameQuery: overrides?.nameQuery ?? nameQuery,
       subject: overrides?.subject ?? subject,
       gradeLevel,
       minRating,
@@ -101,7 +115,13 @@ function TutorsPageContent() {
 
     const nextSubject = searchParams.get("subject") ?? "";
 
-    searchTutors({ subject: nextSubject })
+    Promise.all([
+      searchTutors({ subject: nextSubject }),
+      authedFetch<TutorSuggestion[]>("/tutors/suggestions?limit=6"),
+    ])
+      .then(([, suggestionsResponse]) => {
+        setSuggestions(suggestionsResponse);
+      })
       .catch((error: unknown) => {
         setStatusMessage(error instanceof Error ? error.message : "Failed to load tutors.");
       })
@@ -145,61 +165,156 @@ function TutorsPageContent() {
         {statusMessage && <p className="mt-4 text-sm text-gray-700">{statusMessage}</p>}
 
         <section className="page-card mt-6 p-5">
-          <div className="grid gap-3 md:grid-cols-3">
-            <input
-              className="field-shell"
-              placeholder="Subject or course"
-              value={subject}
-              onChange={(event) => setSubject(event.target.value)}
-            />
-            <input
-              className="field-shell"
-              placeholder="Grade level / year"
-              value={gradeLevel}
-              onChange={(event) => setGradeLevel(event.target.value)}
-            />
-            <input
-              className="field-shell"
-              placeholder="Campus"
-              value={campus}
-              onChange={(event) => setCampus(event.target.value)}
-            />
-            <input
-              className="field-shell"
-              placeholder="Faculty"
-              value={faculty}
-              onChange={(event) => setFaculty(event.target.value)}
-            />
-            <select
-              className="field-shell"
-              value={minRating}
-              onChange={(event) => setMinRating(event.target.value)}
-            >
-              <option value="0">Any rating</option>
-              <option value="3">3.0+</option>
-              <option value="3.5">3.5+</option>
-              <option value="4">4.0+</option>
-              <option value="4.5">4.5+</option>
-            </select>
-            <label className="flex items-center gap-2 rounded-lg border border-[color:var(--border)] bg-white p-3 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={availableOnly}
-                onChange={(event) => setAvailableOnly(event.target.checked)}
-              />
-              Available tutors only
-            </label>
-          </div>
-          <button
-            onClick={handleFilter}
-            disabled={loading}
-            className="primary-button mt-4 px-4 py-2 disabled:opacity-60"
+          {/* Primary search bar */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleFilter(); }}
+            className="flex gap-2"
           >
-            {loading ? "Searching..." : "Apply Filters"}
-          </button>
+            <div className="relative flex-1">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--ink-subtle)]" />
+              <input
+                ref={nameInputRef}
+                className="field-shell w-full pl-9 pr-4"
+                placeholder="Search by tutor name or subject / course…"
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="primary-button px-5 py-2 disabled:opacity-60"
+            >
+              {loading ? "Searching…" : "Search"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className="secondary-button flex items-center gap-1.5 px-4 py-2 text-sm"
+            >
+              Filters
+              {filtersOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          </form>
+
+          {/* Collapsible advanced filters */}
+          {filtersOpen && (
+            <div className="mt-4 border-t border-[color:var(--border)] pt-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                <input
+                  className="field-shell"
+                  placeholder="Subject or course"
+                  value={subject}
+                  onChange={(event) => setSubject(event.target.value)}
+                />
+                <input
+                  className="field-shell"
+                  placeholder="Grade level / year"
+                  value={gradeLevel}
+                  onChange={(event) => setGradeLevel(event.target.value)}
+                />
+                <input
+                  className="field-shell"
+                  placeholder="Campus"
+                  value={campus}
+                  onChange={(event) => setCampus(event.target.value)}
+                />
+                <input
+                  className="field-shell"
+                  placeholder="Faculty"
+                  value={faculty}
+                  onChange={(event) => setFaculty(event.target.value)}
+                />
+                <select
+                  className="field-shell"
+                  value={minRating}
+                  onChange={(event) => setMinRating(event.target.value)}
+                >
+                  <option value="0">Any rating</option>
+                  <option value="3">3.0+</option>
+                  <option value="3.5">3.5+</option>
+                  <option value="4">4.0+</option>
+                  <option value="4.5">4.5+</option>
+                </select>
+                <label className="flex items-center gap-2 rounded-lg border border-[color:var(--border)] bg-white p-3 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={availableOnly}
+                    onChange={(event) => setAvailableOnly(event.target.checked)}
+                  />
+                  Available tutors only
+                </label>
+              </div>
+              <button
+                onClick={handleFilter}
+                disabled={loading}
+                className="primary-button mt-4 px-4 py-2 disabled:opacity-60"
+              >
+                Apply Filters
+              </button>
+            </div>
+          )}
         </section>
 
-        <section className="mt-6 grid gap-6 xl:grid-cols-[0.62fr_0.38fr]">
+        {suggestions.length > 0 && (
+          <section className="mt-6">
+            <div className="mb-4 flex items-center gap-2">
+              <Sparkles size={18} className="text-[color:var(--accent-strong)]" />
+              <h2 className="text-lg font-bold text-[color:var(--foreground)]">Suggested for You</h2>
+              <span className="ml-1 rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--accent-strong)]">
+                Based on your weak topics
+              </span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {suggestions.map((tutor) => (
+                <article
+                  key={tutor.user_id}
+                  className="page-card-strong rounded-2xl p-5 cursor-pointer hover:-translate-y-0.5 transition-transform"
+                  onClick={() => {
+                    setSelectedTutorId(tutor.user_id);
+                    document.getElementById("tutor-list")?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-[color:var(--foreground)]">{tutor.full_name ?? tutor.email}</p>
+                      <p className="mt-0.5 text-xs text-[color:var(--ink-muted)]">{tutor.faculty ?? ""}{tutor.campus ? ` • ${tutor.campus}` : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-1 rounded-full bg-[color:var(--accent-soft)] px-2 py-1">
+                      <Star size={11} className="text-[color:var(--accent-strong)]" fill="currentColor" />
+                      <span className="text-xs font-bold text-[color:var(--accent-strong)]">
+                        {(tutor.match_score * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {tutor.topic_overlaps.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {tutor.topic_overlaps.map((topic) => (
+                        <span key={topic} className="rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-xs font-medium text-[color:var(--accent-strong)]">
+                          {topic}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="mt-3 text-xs leading-5 text-[color:var(--ink-muted)] line-clamp-2">{tutor.match_reason}</p>
+
+                  <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--ink-muted)]">
+                    <span>{tutor.credibility_score.toFixed(1)} ★ ({tutor.ratings_count} reviews)</span>
+                    {tutor.upcoming_sessions_count > 0 && (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800 font-medium">
+                        Available
+                      </span>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section id="tutor-list" className="mt-6 grid gap-6 xl:grid-cols-[0.62fr_0.38fr]">
           <div className="space-y-4">
             {tutors.map((tutor) => (
               <article
@@ -258,8 +373,8 @@ function TutorsPageContent() {
             <p className="mt-1 text-sm text-gray-600">{selectedTutor?.full_name ?? "Selected tutor"}</p>
 
             <div className="mt-4 space-y-3">
-              {reviews.map((review) => (
-                <article key={`${review.session_id}-${review.created_at}`} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+              {reviews.map((review, index) => (
+                <article key={`${review.session_id}-${review.created_at}-${index}`} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                   <p className="text-sm font-semibold text-gray-900">{review.score} / 5</p>
                   <p className="mt-1 text-sm text-gray-700">{review.feedback || "No written feedback."}</p>
                   <p className="mt-1 text-xs text-gray-500">

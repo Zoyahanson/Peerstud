@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from backend.config import settings
 
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    connect_args={"options": "-c search_path=public,extensions"},
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 uploads_dir = Path(__file__).resolve().parent / "uploads"
@@ -17,6 +21,9 @@ uploads_dir = Path(__file__).resolve().parent / "uploads"
 
 def ensure_runtime_schema() -> None:
     statements = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_uid VARCHAR(128)",
+        "DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'firebase_uid') THEN EXECUTE 'UPDATE users SET auth_uid = firebase_uid WHERE auth_uid IS NULL'; END IF; END $$",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_auth_uid ON users(auth_uid)",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS year_of_study VARCHAR(50)",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS faculty VARCHAR(150)",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS campus VARCHAR(150)",
@@ -30,6 +37,10 @@ def ensure_runtime_schema() -> None:
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS weak_topics TEXT",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS credibility_score DOUBLE PRECISION NOT NULL DEFAULT 0",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ratings_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS offer_text TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS need_text TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS offer_vector vector(1536)",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS need_vector vector(1536)",
         "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS topic_focus VARCHAR(200) NOT NULL DEFAULT 'General Study Session'",
         "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS description TEXT",
         "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS calendar_event_id VARCHAR(255)",

@@ -1,0 +1,151 @@
+{
+  "generated_at": "2026-05-04T17:28:23.623493+00:00",
+  "report_path": "C:\\Users\\akeem\\Dev\\peerstud\\backend\\seed_report.json",
+  "default_password": "peerstud123!",
+  "auth_note": "Seeded accounts are created in the app users table; create matching Supabase Auth users manually with the default password for login tests.",
+  "summary": {
+    "users": 4,
+    "courses": 3,
+    "sessions": 3,
+    "study_groups": 2,
+    "resources": 3,
+    "conversations": 1,
+    "chat_messages": 2
+  },
+  "users": [
+    {
+      "id": "c1c256c6-1333-410c-8d0f-8b913ad6bd3b",
+      "auth_uid": "seed-alana",
+      "email": "alana.morgan@mymona.uwi.edu",
+      "full_name": "Alana Morgan",
+      "year_of_study": "Year 3",
+      "faculty": "Faculty of Science and Technology",
+      "campus": "Mona",
+      "major": "Computer Science",
+      "minor": "Mathematics",
+      "current_courses": [
+        "COMP3035",
+        "COMP3901",
+        "MATH2400"
+      ],
+      "available_for_tutoring": true,
+      "credibility_score": 0.0,
+      "ratings_count": 0,
+      "has_embedding": true,
+      "has_offer_vector": true,
+      "has_need_vector": true,
+      "email_alerts": true,
+      "calendar_auto_meet": true,
+      "adaptive_layout": true,
+      "desktop_reminders": true,
+      "reminder_minutes_before": 20,
+      "datapoints": {
+        "hosted_sessions": 1,
+        "joined_sessions": 3,
+        "study_groups_joined": 2,
+        "resources_shared": 1,
+        "chat_messages_sent": 1
+      }
+    },
+    {
+      "id": "487d4fd0-6597-4ba9-bc92-42a6e0310a3c",
+      "auth_uid": "seed-dwayne",
+      "email": "dwayne.brown@mymona.uwi.edu",
+      "full_name": "Dwayne Brown",
+      "year_of_study": "Year 2",
+      "faculty": "Faculty of Science and Technology",
+      "campus": "Mona",
+      "major": "Information Technology",
+      "minor": "Management Studies",
+      "current_courses": [
+        "COMP3035",
+        "INFO2101"
+      ],
+      "available_for_tutoring": true,
+      "credibility_score": 4.5,
+      "ratings_count": 2,
+      "has_embedding": true,
+      "has_offer_vector": true,
+      "has_need_vector": true,
+      "email_alerts": true,
+      "calendar_auto_meet": false,
+      "adaptive_layout": true,
+      "desktop_reminders": false,
+      "reminder_minutes_before": 45,
+      "datapoints": {
+        "hosted_sessions": 1,
+        "joined_sessions": 2,
+        "study_groups_joined": 1,
+        "resources_shared": 1,
+        "chat_messages_sent": 0
+      }
+    },
+    {
+      "id": "443f31ca-c72a-4ee2-a1c5-0c3c335eb33c",
+      "auth_uid": "seed-kayla",
+      "email": "kayla.reid@uwi.edu.jm",
+      "full_name": "Kayla Reid",
+      "year_of_study": "Year 4",
+      "faculty": "Faculty of Science and Technology",
+      "campus": "Mona",
+      "major": "Mathematics",
+      "minor": "Computer Science",
+      "current_courses": [
+        "MATH2400",
+        "STAT3001",
+        "COMP3901"
+      ],
+      "available_for_tutoring": true,
+      "credibility_score": 0.0,
+      "ratings_count": 0,
+      "has_embedding": true,
+      "has_offer_vector": true,
+      "has_need_vector": true,
+      "email_alerts": false,
+      "calendar_auto_meet": true,
+      "adaptive_layout": false,
+      "desktop_reminders": true,
+      "reminder_minutes_before": 30,
+      "datapoints": {
+        "hosted_sessions": 1,
+        "joined_sessions": 2,
+        "study_groups_joined": 1,
+        "resources_shared": 1,
+        "chat_messages_sent": 0
+      }
+    },
+    {
+      "id": "810259ae-2bd1-46b8-bf18-bd684b74fddb",
+      "auth_uid": "seed-malik",
+      "email": "malik.thomas@mymona.uwi.edu",
+      "full_name": "Malik Thomas",
+      "year_of_study": "Year 1",
+      "faculty": "Faculty of Science and Technology",
+      "campus": "Mona",
+      "major": "Computer Science",
+      "minor": null,
+      "current_courses": [
+        "COMP1126",
+        "COMP3035"
+      ],
+      "available_for_tutoring": false,
+      "credibility_score": 0.0,
+      "ratings_count": 0,
+      "has_embedding": true,
+      "has_offer_vector": true,
+      "has_need_vector": true,
+      "email_alerts": true,
+      "calendar_auto_meet": false,
+      "adaptive_layout": true,
+      "desktop_reminders": true,
+      "reminder_minutes_before": 15,
+      "datapoints": {
+        "hosted_sessions": 0,
+        "joined_sessions": 2,
+        "study_groups_joined": 1,
+        "resources_shared": 0,
+        "chat_messages_sent": 1
+      }
+    }
+  ]
+}

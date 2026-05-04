@@ -15,7 +15,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    firebase_uid: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    auth_uid: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -43,6 +43,16 @@ class User(Base):
     chat_participations: Mapped[list["ConversationParticipant"]] = relationship(back_populates="user")
     study_groups_created: Mapped[list["StudyGroup"]] = relationship(back_populates="creator")
     study_group_memberships: Mapped[list["StudyGroupMember"]] = relationship(back_populates="user")
+    friendships_initiated: Mapped[list["Friendship"]] = relationship(
+        back_populates="user",
+        foreign_keys="Friendship.user_id",
+        cascade="all, delete-orphan",
+    )
+    friendships_received: Mapped[list["Friendship"]] = relationship(
+        back_populates="friend",
+        foreign_keys="Friendship.friend_user_id",
+        cascade="all, delete-orphan",
+    )
 
 
 class UserProfile(Base):
@@ -77,6 +87,10 @@ class UserProfile(Base):
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     interests: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    offer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    need_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    offer_vector: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    need_vector: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -392,3 +406,25 @@ class ChatMessage(Base):
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
     sender: Mapped[User] = relationship(back_populates="sent_chat_messages")
+
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    friend_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="friendships_initiated", foreign_keys=[user_id])
+    friend: Mapped[User] = relationship(back_populates="friendships_received", foreign_keys=[friend_user_id])

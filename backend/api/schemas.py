@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 class UserResponse(BaseModel):
     id: UUID
-    firebase_uid: str
+    auth_uid: str
     email: EmailStr
     full_name: str | None
 
@@ -29,6 +29,10 @@ class UserProfileUpsert(BaseModel):
     bio: str | None = None
     interests: str | None = None
     embedding: list[float] | None = Field(default=None, min_length=1536, max_length=1536)
+    offer_text: str | None = None
+    need_text: str | None = None
+    offer_vector: list[float] | None = Field(default=None, min_length=1536, max_length=1536)
+    need_vector: list[float] | None = Field(default=None, min_length=1536, max_length=1536)
 
 
 class UserProfileResponse(BaseModel):
@@ -50,7 +54,11 @@ class UserProfileResponse(BaseModel):
     ratings_count: int
     bio: str | None
     interests: str | None
+    offer_text: str | None
+    need_text: str | None
     has_embedding: bool
+    has_offer_vector: bool
+    has_need_vector: bool
 
 
 class UserProfileDetailResponse(BaseModel):
@@ -71,7 +79,11 @@ class UserProfileDetailResponse(BaseModel):
     ratings_count: int
     bio: str | None
     interests: str | None
+    offer_text: str | None
+    need_text: str | None
     has_embedding: bool
+    has_offer_vector: bool
+    has_need_vector: bool
 
 
 class GoogleCalendarLinkStartResponse(BaseModel):
@@ -129,6 +141,7 @@ class SessionCreate(BaseModel):
     meet_link: str | None = None
     generate_meet: bool = False
     reminder_minutes_before: int | None = Field(default=None, ge=5, le=1440)
+    invite_emails: list[EmailStr] = Field(default_factory=list)
 
 
 class SessionParticipantResponse(BaseModel):
@@ -154,6 +167,7 @@ class SessionResponse(BaseModel):
     calendar_event_id: str | None
     status: str
     participant_count: int
+    invited_count: int
     joined: bool
     average_rating: float | None
     participants: list[SessionParticipantResponse]
@@ -177,6 +191,10 @@ class MatchResponse(BaseModel):
     email: EmailStr
     full_name: str | None
     distance: float
+    match_score: float | None = None
+    complementarity_score: float | None = None
+    credibility_score: float | None = None
+    matching_strategy: str | None = None
 
 
 class CourseSummaryResponse(BaseModel):
@@ -261,6 +279,28 @@ class ChatContactResponse(BaseModel):
     ratings_count: int
 
 
+# ── Friends ──────────────────────────────────────────────────────────────────
+
+class UserSearchResult(BaseModel):
+    user_id: UUID
+    full_name: str | None
+    email: EmailStr
+
+
+class FriendAddRequest(BaseModel):
+    friend_user_id: UUID
+
+
+class FriendEntryResponse(BaseModel):
+    user_id: UUID
+    full_name: str | None
+    email: EmailStr
+    mutual_sessions: int
+    streak_days: int
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 class ChatConversationCreate(BaseModel):
     peer_user_id: UUID
 
@@ -327,6 +367,12 @@ class TutorDirectoryEntryResponse(BaseModel):
     ratings_count: int
     upcoming_sessions_count: int
     badges: list[TutorBadgeResponse]
+
+
+class TutorSuggestionResponse(TutorDirectoryEntryResponse):
+    match_score: float
+    match_reason: str
+    topic_overlaps: list[str]
 
 
 class TutorProfilePublicResponse(BaseModel):

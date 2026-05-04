@@ -1,6 +1,6 @@
 # PeerStud Frontend
 
-Next.js frontend for PeerStud dashboard, profile management, resource browsing, study groups, and Google Calendar linking.
+Next.js frontend for PeerStud dashboard, profile management, resource browsing, study groups, and Supabase-authenticated access.
 
 ## Setup
 
@@ -16,11 +16,24 @@ npm install
 copy .env.local.example .env.local
 ```
 
-3. Verify API URL in `.env.local`:
+3. Configure `.env.local`:
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_ALLOWED_SCHOOL_EMAIL_DOMAINS=mymona.uwi.edu,uwi.edu.jm
 ```
+
+## Supabase Auth Prerequisites
+
+Before using `/register` and `/login`, configure Supabase:
+
+1. Enable Email provider in `Authentication -> Providers`.
+2. Enable email confirmation and email OTP.
+3. Set Site URL to your frontend URL (for local: `http://localhost:3000`).
+
+Registration uses OTP verification and only allows listed organization domains.
 
 4. Start dev server:
 

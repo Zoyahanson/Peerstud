@@ -26,8 +26,12 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup() -> None:
-    Base.metadata.create_all(bind=engine)
-    ensure_runtime_schema()
+    try:
+        Base.metadata.create_all(bind=engine)
+        ensure_runtime_schema()
+    except Exception as exc:
+        import logging
+        logging.getLogger("uvicorn.error").warning("DB startup skipped (no connection): %s", exc)
 
 
 @app.get("/")

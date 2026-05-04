@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { BellRing, CalendarRange, Clock3, Sparkles, UsersRound } from "lucide-react";
+import { BellRing, CalendarRange, UsersRound } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
 import { authedFetch, getToken } from "../../../lib/api";
 import { buildDefaultVirtualRoomUrl } from "../../../lib/virtual-room";
@@ -40,6 +40,7 @@ type SessionItem = {
   calendar_event_id: string | null;
   status: string;
   participant_count: number;
+  invited_count: number;
   joined: boolean;
   average_rating: number | null;
   participants: SessionParticipant[];
@@ -72,6 +73,7 @@ export default function VirtualSessionsPage() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [customRoomLink, setCustomRoomLink] = useState("");
+  const [inviteEmails, setInviteEmails] = useState("");
   const [reminderMinutesBefore, setReminderMinutesBefore] = useState("30");
   const [ratingScores, setRatingScores] = useState<Record<string, string>>({});
   const [ratingFeedback, setRatingFeedback] = useState<Record<string, string>>({});
@@ -121,6 +123,14 @@ export default function VirtualSessionsPage() {
     try {
       setCreating(true);
       setStatusMessage("");
+      const parsedInviteEmails = Array.from(
+        new Set(
+          inviteEmails
+            .split(/[\n,;]+/)
+            .map((email) => email.trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      );
       await authedFetch<SessionItem>("/sessions", {
         method: "POST",
         body: JSON.stringify({
@@ -140,11 +150,13 @@ export default function VirtualSessionsPage() {
             }),
           generate_meet: false,
           reminder_minutes_before: Number(reminderMinutesBefore),
+          invite_emails: parsedInviteEmails,
         }),
       });
       setTopicFocus("");
       setDescription("");
       setCustomRoomLink("");
+      setInviteEmails("");
       setStatusMessage("Session scheduled.");
       await loadData();
     } catch (error: unknown) {
@@ -239,31 +251,6 @@ export default function VirtualSessionsPage() {
               </div>
             </div>
 
-            <div className="space-y-4">
-              <article className="glass-panel rounded-[1.8rem] p-6">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-2xl bg-[color:var(--accent-soft)] p-3 text-[color:var(--accent-strong)]">
-                    <Sparkles size={22} />
-                  </div>
-                  <div>
-                    <p className="section-kicker">Smart Flow</p>
-                    <p className="mt-2 text-lg font-semibold text-[color:var(--foreground)]">Adaptive actions keep scheduling front and center.</p>
-                  </div>
-                </div>
-              </article>
-
-              <article className="page-card rounded-[1.8rem] border p-6">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-2xl bg-white/70 p-3 text-[color:var(--accent-strong)]">
-                    <Clock3 size={22} />
-                  </div>
-                  <div>
-                    <p className="section-kicker">Missed Session Guardrail</p>
-                    <p className="mt-2 text-lg font-semibold text-[color:var(--foreground)]">Every new session can inherit reminder timing.</p>
-                  </div>
-                </div>
-              </article>
-            </div>
           </div>
 
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -361,6 +348,16 @@ export default function VirtualSessionsPage() {
               </label>
 
               <label className="space-y-2 md:col-span-2">
+                <span className="soft-label">Invite Users (Optional)</span>
+                <textarea
+                  className="field-shell min-h-24"
+                  value={inviteEmails}
+                  onChange={(event) => setInviteEmails(event.target.value)}
+                  placeholder="Enter school emails separated by commas or new lines"
+                />
+              </label>
+
+              <label className="space-y-2 md:col-span-2">
                 <span className="soft-label">Session Notes</span>
                 <textarea
                   className="field-shell min-h-24"
@@ -419,6 +416,11 @@ export default function VirtualSessionsPage() {
                             <p className="mt-3 text-xs uppercase tracking-[0.18em] text-[color:var(--accent-strong)]">
                               Reminder set for {Number(reminderMinutesBefore)} minutes before start
                             </p>
+                            {session.invited_count > 0 && (
+                              <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--ink-muted)]">
+                                {session.invited_count} invited
+                              </p>
+                            )}
                           </div>
 
                           <div className="flex flex-col gap-2">
@@ -447,6 +449,7 @@ export default function VirtualSessionsPage() {
                             <div key={participant.user_id} className="rounded-[1.1rem] bg-[rgba(255,250,243,0.9)] p-3 text-sm text-[color:var(--ink-muted)]">
                               <p className="font-medium text-[color:var(--foreground)]">{participant.full_name || participant.email}</p>
                               <p>{participant.email}</p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.15em]">{participant.status}</p>
                             </div>
                           ))}
                         </div>

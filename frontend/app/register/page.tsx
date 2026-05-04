@@ -3,15 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatAllowedDomains, isAllowedSchoolEmail, loadSchoolEmailPolicy } from "../../lib/auth-policy";
-import {
-  createUserWithEmailAndPassword,
-  fetchSignInMethodsForEmail,
-  firebaseAuth,
-  isFirebaseConfigured,
-  sendEmailVerification,
-  signOut,
-  updateProfile,
-} from "../../lib/firebase";
+import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
 export default function Register() {
   const router = useRouter();
@@ -19,47 +11,101 @@ export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [verificationStage, setVerificationStage] = useState<"details" | "otp">("details");
 
   useEffect(() => {
     loadSchoolEmailPolicy().then((policy) => setAllowedDomains(policy.allowed_domains));
   }, []);
 
-  const handleRegister = async () => {
+  const handleSendOtp = async () => {
     setError("");
     setMessage("");
 
     if (!isAllowedSchoolEmail(email, allowedDomains)) {
-      setError(`Register with a supported school email. Allowed domains: ${formatAllowedDomains(allowedDomains)}.`);
+      setError(
+        `Personal email addresses are not accepted. Use your organization email (${formatAllowedDomains(allowedDomains)}).`,
+      );
       return;
     }
 
-    if (!firebaseAuth || !isFirebaseConfigured()) {
-      setError("Firebase auth is not configured yet. Add the frontend API keys to enable registration.");
+    if (password.trim().length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (!supabase || !isSupabaseConfigured()) {
+      setError("Supabase auth is not configured yet. Add your Supabase URL and anon key.");
       return;
     }
 
     try {
       setSubmitting(true);
-      const methods = await fetchSignInMethodsForEmail(firebaseAuth, email.trim().toLowerCase());
-      if (methods.length) {
-        setError("An account already exists for this school email. Try signing in instead.");
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim().toLowerCase(),
+        options: {
+          shouldCreateUser: true,
+          data: name.trim() ? { full_name: name.trim() } : undefined,
+        },
+      });
+      if (error) {
+        setError(error.message || "Could not send verification code.");
+        return;
+      }
+      setVerificationStage("otp");
+      setMessage("A 6-digit OTP was sent to your organization email. Enter it to verify your account.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send verification code.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    setError("");
+    setMessage("");
+
+    if (!otp.trim()) {
+      setError("Enter the OTP code from your email.");
+      return;
+    }
+
+    if (!supabase || !isSupabaseConfigured()) {
+      setError("Supabase auth is not configured yet. Add your Supabase URL and anon key.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email.trim().toLowerCase(),
+        token: otp.trim(),
+        type: "email",
+      });
+      if (error) {
+        setError(error.message || "Invalid OTP code.");
         return;
       }
 
-      const credentials = await createUserWithEmailAndPassword(firebaseAuth, email.trim().toLowerCase(), password);
-      if (name.trim()) {
-        await updateProfile(credentials.user, { displayName: name.trim() });
+      const { error: passwordError } = await supabase.auth.updateUser({ password });
+      if (passwordError) {
+        setError(passwordError.message || "Verified email, but failed to set password.");
+        return;
       }
-      await sendEmailVerification(credentials.user);
-      await signOut(firebaseAuth);
-      setMessage("Account created. Check your school inbox and verify your email before signing in.");
+
+      if (data.session?.access_token) {
+        router.push("/dashboard");
+        return;
+      }
+
+      setMessage("Email verified. You can now sign in.");
       window.setTimeout(() => router.push("/login"), 1200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed.");
+      setError(err instanceof Error ? err.message : "OTP verification failed.");
     } finally {
       setSubmitting(false);
     }
@@ -70,44 +116,76 @@ export default function Register() {
       <div className="page-card w-full max-w-md p-10">
         <h2 className="text-3xl font-bold mb-3 text-center text-gray-950">Create Account</h2>
 
-        <p className="text-sm text-gray-700 mb-5 text-center">School email registration.</p>
+        <p className="text-sm text-gray-700 mb-5 text-center">Organization email registration with OTP verification.</p>
 
         {error && (
           <p className="text-red-600 text-sm mb-4">{error}</p>
         )}
         {message && <p className="text-green-700 text-sm mb-4">{message}</p>}
 
-        <input
-          type="text"
-          placeholder="Full Name"
-          className="field-shell mb-4"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
+        {verificationStage === "details" ? (
+          <>
+            <input
+              type="text"
+              placeholder="Full Name"
+              className="field-shell mb-4"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
 
-        <input
-          type="email"
-          placeholder="School email"
-          className="field-shell mb-4"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
+            <input
+              type="email"
+              placeholder="Organization email"
+              className="field-shell mb-4"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
 
-        <input
-          type="password"
-          placeholder="Password"
-          className="field-shell mb-6"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+            <input
+              type="password"
+              placeholder="Password"
+              className="field-shell mb-6"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
 
-        <button
-          onClick={handleRegister}
-          disabled={submitting}
-          className="primary-button w-full p-3 transition disabled:opacity-60"
-        >
-          {submitting ? "Creating Account..." : "Register"}
-        </button>
+            <button
+              onClick={handleSendOtp}
+              disabled={submitting}
+              className="primary-button w-full p-3 transition disabled:opacity-60"
+            >
+              {submitting ? "Sending OTP..." : "Send OTP"}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-gray-700 mb-4">
+              Enter the OTP sent to {email.trim().toLowerCase()} to verify your organization account.
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Enter OTP code"
+              className="field-shell mb-4"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+            />
+            <button
+              onClick={handleVerifyOtp}
+              disabled={submitting}
+              className="primary-button w-full p-3 transition disabled:opacity-60"
+            >
+              {submitting ? "Verifying OTP..." : "Verify OTP"}
+            </button>
+            <button
+              onClick={handleSendOtp}
+              disabled={submitting}
+              className="mt-3 w-full rounded-xl border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--ink-muted)] transition hover:bg-[color:var(--background-alt)] disabled:opacity-60"
+            >
+              Resend OTP
+            </button>
+          </>
+        )}
 
         <p className="text-xs text-gray-700 mt-4">
           Supported school domains: {formatAllowedDomains(allowedDomains)}

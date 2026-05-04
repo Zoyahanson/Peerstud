@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Edit3, MessageCircle, Plus, Search, Send } from "lucide-react";
+import { MessageCircle, Plus, Search, Send, Users, X } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
 import { authedFetch, getToken } from "../../../lib/api";
 
@@ -33,17 +33,29 @@ type ChatMessage = {
   created_at: string;
 };
 
-export default function ChatPage() {
+export default function ChatPage({
+  tab = "chat",
+  onTabChange,
+}: {
+  tab?: "chat" | "groups";
+  onTabChange?: (t: "chat" | "groups") => void;
+}) {
   const router = useRouter();
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string>("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [selectedPeerUserId, setSelectedPeerUserId] = useState<string>("");
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  // User search state
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ChatContact[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
 
   const selectedConversation = useMemo(
@@ -84,7 +96,6 @@ export default function ChatPage() {
       .then(([contactResponse, conversationResponse]) => {
         setContacts(contactResponse);
         setConversations(conversationResponse);
-        setSelectedPeerUserId(contactResponse[0]?.user_id ?? "");
         if (conversationResponse[0]?.conversation_id) {
           setSelectedConversationId(conversationResponse[0].conversation_id);
         }
@@ -140,21 +151,58 @@ export default function ChatPage() {
     messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
   }, [messages]);
 
-  async function handleStartConversation() {
-    if (!selectedPeerUserId) {
-      setStatusMessage("Select a contact first.");
+  // Seed search results as soon as contacts are loaded so dropdown shows on first focus
+  useEffect(() => {
+    if (contacts.length > 0 && searchResults.length === 0 && !userSearchQuery) {
+      setSearchResults(contacts.slice(0, 20));
+    }
+  }, [contacts, searchResults.length, userSearchQuery]);
+
+  // Debounced user search
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    const q = userSearchQuery.trim();
+    if (!q) {
+      setSearchResults(contacts.slice(0, 20));
       return;
     }
+    searchDebounceRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const results = await authedFetch<ChatContact[]>(`/chat/contacts?q=${encodeURIComponent(q)}&limit=20`);
+        setSearchResults(results);
+      } catch {
+        // silently ignore search errors
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 280);
+  }, [userSearchQuery, contacts]);
 
+  // Close search dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSearchResults(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  async function handleStartConversationWith(peerUserId: string) {
+    if (!peerUserId) return;
     try {
       setBusy(true);
       setStatusMessage("");
       const conversation = await authedFetch<ChatConversation>("/chat/conversations", {
         method: "POST",
-        body: JSON.stringify({ peer_user_id: selectedPeerUserId }),
+        body: JSON.stringify({ peer_user_id: peerUserId }),
       });
       await refreshConversations();
       setSelectedConversationId(conversation.conversation_id);
+      setUserSearchQuery("");
+      setShowSearchResults(false);
     } catch (error: unknown) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to open conversation.");
     } finally {
@@ -194,59 +242,96 @@ export default function ChatPage() {
       <Sidebar />
 
       {/* Telegram-style full-height messenger */}
-      <main className="flex min-h-0 flex-1 overflow-hidden" style={{ height: "calc(100vh - 4rem)" }}>
+      <main className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4" style={{ height: "calc(100vh - 4rem)" }}>
         {/* Left panel – conversation list */}
-        <div className="flex w-72 shrink-0 flex-col border-r border-white/10 bg-[color:var(--sidebar-bg)] xl:w-80">
-          {/* Panel header */}
+        <div className="flex w-72 shrink-0 flex-col rounded-[2rem] border border-white/10 bg-[color:var(--sidebar-bg)] shadow-xl xl:w-80">
+          {/* Panel header with tab toggle */}
           <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4">
-            <h2 className="flex-1 text-base font-bold text-white">Messages</h2>
-            <button
-              title="Edit"
-              className="rounded-full bg-white/10 p-2 text-[color:var(--sidebar-text)] hover:bg-white/20 transition"
-            >
-              <Edit3 size={15} />
-            </button>
+            {onTabChange ? (
+              <div className="flex flex-1 gap-1 rounded-xl bg-white/10 p-1">
+                <button
+                  onClick={() => onTabChange("chat")}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition ${
+                    tab === "chat"
+                      ? "bg-[color:var(--accent)] text-white"
+                      : "text-[color:var(--sidebar-text)] hover:text-white"
+                  }`}
+                >
+                  <MessageCircle size={13} />
+                  Chats
+                </button>
+                <button
+                  onClick={() => onTabChange("groups")}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition ${
+                    tab === "groups"
+                      ? "bg-[color:var(--navy-dark)] text-white"
+                      : "text-[color:var(--sidebar-text)] hover:text-white"
+                  }`}
+                >
+                  <Users size={13} />
+                  Groups
+                </button>
+              </div>
+            ) : (
+              <h2 className="flex-1 text-base font-bold text-white">Messages</h2>
+            )}
           </div>
 
-          {/* Search */}
-          <div className="px-3 py-2">
+          {/* User search – find anyone to message */}
+          <div ref={searchRef} className="relative border-b border-white/10 px-3 py-2">
             <div className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2">
-              <Search size={13} className="text-[color:var(--sidebar-muted)]" />
+              <Search size={13} className="shrink-0 text-[color:var(--sidebar-muted)]" />
               <input
-                placeholder="Search conversations"
+                placeholder="Search people…"
                 className="flex-1 bg-transparent text-sm text-white placeholder:text-[color:var(--sidebar-muted)] focus:outline-none"
+                value={userSearchQuery}
+                onChange={(e) => {
+                  setUserSearchQuery(e.target.value);
+                  setShowSearchResults(true);
+                }}
+                onFocus={() => setShowSearchResults(true)}
               />
+              {userSearchQuery && (
+                <button
+                  onClick={() => { setUserSearchQuery(""); setShowSearchResults(false); }}
+                  className="text-[color:var(--sidebar-muted)] hover:text-white"
+                >
+                  <X size={13} />
+                </button>
+              )}
             </div>
-          </div>
 
-          {/* New conversation */}
-          <div className="border-b border-white/10 px-3 pb-3">
-            <div className="flex items-center gap-2">
-              <select
-                className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm text-[color:var(--sidebar-text)] focus:outline-none"
-                value={selectedPeerUserId}
-                onChange={(e) => setSelectedPeerUserId(e.target.value)}
-              >
-                <option value="">New conversation…</option>
-                {contacts.map((c) => (
-                  <option key={c.user_id} value={c.user_id} className="bg-[#1B2E4B]">
-                    {c.full_name ?? c.email}
-                  </option>
+            {showSearchResults && (
+              <div className="absolute inset-x-3 top-full z-50 mt-1 overflow-hidden rounded-xl border border-white/10 bg-[color:var(--navy-dark)] shadow-xl">
+                {searchLoading && (
+                  <p className="px-4 py-3 text-xs text-[color:var(--sidebar-muted)]">Searching…</p>
+                )}
+                {!searchLoading && searchResults.length === 0 && (
+                  <p className="px-4 py-3 text-xs text-[color:var(--sidebar-muted)]">No users found</p>
+                )}
+                {!searchLoading && searchResults.map((contact) => (
+                  <button
+                    key={contact.user_id}
+                    disabled={busy}
+                    onClick={() => handleStartConversationWith(contact.user_id)}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-white/10 transition disabled:opacity-50"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--navy)] text-xs font-semibold text-white">
+                      {(contact.full_name ?? contact.email).slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="overflow-hidden">
+                      <p className="truncate text-sm font-medium text-white">{contact.full_name ?? contact.email}</p>
+                      <p className="truncate text-xs text-[color:var(--sidebar-muted)]">{contact.email}</p>
+                    </div>
+                    <Plus size={14} className="ml-auto shrink-0 text-[color:var(--accent)]" />
+                  </button>
                 ))}
-              </select>
-              <button
-                onClick={handleStartConversation}
-                disabled={busy || !selectedPeerUserId}
-                title="Start conversation"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--accent)] text-white disabled:opacity-40 hover:opacity-90 transition"
-              >
-                <Plus size={16} />
-              </button>
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto rounded-b-[2rem]">
             {loading && (
               <p className="px-4 py-8 text-center text-sm text-[color:var(--sidebar-muted)]">Loading…</p>
             )}
@@ -299,7 +384,7 @@ export default function ChatPage() {
 
         {/* Right panel – message thread */}
         {selectedConversation ? (
-          <div className="flex flex-1 flex-col overflow-hidden bg-[color:var(--background)]">
+          <div className="flex flex-1 flex-col overflow-hidden rounded-[2rem] border border-[color:var(--border)] bg-[color:var(--background)] shadow-xl">
             {/* Chat header */}
             <div className="flex items-center gap-3 border-b border-[color:var(--border)] bg-white px-5 py-3 shadow-sm">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--navy)] text-sm font-semibold text-white">
@@ -385,7 +470,7 @@ export default function ChatPage() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-1 items-center justify-center bg-[color:var(--background)]">
+          <div className="flex flex-1 items-center justify-center rounded-[2rem] border border-[color:var(--border)] bg-[color:var(--background)] shadow-xl">
             <div className="text-center">
               <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[color:var(--navy-tint)]">
                 <MessageCircle size={36} className="text-[color:var(--navy)]" />

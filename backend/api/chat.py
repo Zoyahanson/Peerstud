@@ -61,6 +61,7 @@ def _conversation_summary(
 
 @router.get("/contacts", response_model=list[ChatContactResponse])
 def list_contacts(
+    q: str | None = None,
     limit: int = 50,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -68,10 +69,20 @@ def list_contacts(
     if limit < 1 or limit > 200:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="limit must be between 1 and 200")
 
-    users = (
+    query = (
         db.query(User, UserProfile)
         .outerjoin(UserProfile, UserProfile.user_id == User.id)
         .filter(User.id != current_user.id)
+    )
+
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        query = query.filter(
+            (User.full_name.ilike(pattern)) | (User.email.ilike(pattern))
+        )
+
+    users = (
+        query
         .order_by(User.full_name.asc().nulls_last(), User.email.asc())
         .limit(limit)
         .all()

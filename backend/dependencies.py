@@ -24,15 +24,15 @@ def get_current_user(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db),
 ) -> User:
-    firebase_uid = token_payload.get("uid")
+    auth_uid = token_payload.get("sub")
     email = validate_school_email_claims(token_payload)
-    if not firebase_uid:
+    if not auth_uid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token payload missing required claims",
         )
 
-    user = db.query(User).filter(User.firebase_uid == firebase_uid).first()
+    user = db.query(User).filter(User.auth_uid == auth_uid).first()
     if user:
         if user.email != email:
             user.email = email
@@ -41,8 +41,20 @@ def get_current_user(
             db.refresh(user)
         return user
 
+    # Seeded/demo users may exist with matching email before their Supabase auth_uid is known.
+    # Link that existing row instead of inserting a duplicate email.
+    existing_email_user = db.query(User).filter(User.email == email).first()
+    if existing_email_user:
+        existing_email_user.auth_uid = auth_uid
+        if token_payload.get("name") and not existing_email_user.full_name:
+            existing_email_user.full_name = token_payload.get("name")
+        db.add(existing_email_user)
+        db.commit()
+        db.refresh(existing_email_user)
+        return existing_email_user
+
     user = User(
-        firebase_uid=firebase_uid,
+        auth_uid=auth_uid,
         email=email,
         full_name=token_payload.get("name"),
     )

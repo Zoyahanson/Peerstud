@@ -1,26 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, ChevronDown, ChevronUp, Menu, Search, User, X } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Bell, ChevronDown, ChevronUp, LogOut, Menu, Search, User, X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabase";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
-  const [loggedIn, setLoggedIn] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-    return Boolean(localStorage.getItem("token"));
-  });
+  const [loggedIn, setLoggedIn] = useState(false);
   const router = useRouter();
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function syncAuthState() {
       setLoggedIn(Boolean(localStorage.getItem("token")));
     }
+
+    syncAuthState();
 
     window.addEventListener("storage", syncAuthState);
     window.addEventListener("auth-changed", syncAuthState);
@@ -31,8 +30,20 @@ export default function Navbar() {
     };
   }, []);
 
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
   return (
-    <nav className="sticky top-0 z-40 overflow-hidden border-b border-[color:var(--border)] bg-[rgba(255,255,255,0.88)] backdrop-blur-xl">
+    <nav className="sticky top-0 z-40 border-b border-[color:var(--border)] bg-[rgba(255,255,255,0.88)] backdrop-blur-xl">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[color:var(--green)] via-[color:var(--accent)] to-[color:var(--navy)]" />
       <div className="pointer-events-none absolute -left-12 -top-16 h-40 w-40 rounded-full bg-[color:var(--accent-soft)] blur-3xl" />
       <div className="pointer-events-none absolute -right-8 -top-16 h-40 w-40 rounded-full bg-[color:var(--navy-tint)] blur-3xl" />
@@ -79,7 +90,7 @@ export default function Navbar() {
         </button>
 
         {loggedIn ? (
-          <div className={`relative items-center gap-3 ${desktopCollapsed ? "hidden md:hidden" : "hidden md:flex"}`}>
+          <div ref={profileMenuRef} className={`relative items-center gap-3 ${desktopCollapsed ? "hidden md:hidden" : "hidden md:flex"}`}>
             <Link
               href="/dashboard/tutors"
               className="hidden items-center gap-2 rounded-full border border-[color:var(--border)] bg-white/70 px-4 py-2 text-sm font-medium text-[color:var(--foreground)] shadow-sm hover:-translate-y-0.5 lg:flex"
@@ -95,7 +106,9 @@ export default function Navbar() {
               Reminders
             </Link>
             <button
-              onClick={() => setOpen(!open)}
+              onClick={() => setOpen((prev) => !prev)}
+              aria-expanded={open}
+              aria-haspopup="menu"
               className="flex items-center gap-2 rounded-full border border-[color:var(--border)] bg-white/75 px-4 py-2 text-[color:var(--foreground)] shadow-sm hover:-translate-y-0.5"
             >
               <User size={22} />
@@ -103,17 +116,23 @@ export default function Navbar() {
             </button>
 
             {open && (
-              <div className="absolute right-0 top-full mt-3 w-48 rounded-3xl border border-[color:var(--border)] bg-white p-4 shadow-2xl backdrop-blur-xl">
+              <div role="menu" className="absolute right-0 top-full z-50 mt-3 w-52 rounded-3xl border border-[color:var(--border)] bg-white p-4 shadow-2xl backdrop-blur-xl">
                 <Link
                   href="/profile"
-                  className="mb-2 block rounded-2xl px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:bg-white"
+                  role="menuitem"
+                  className="mb-1 flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:bg-gray-50"
                   onClick={() => setOpen(false)}
                 >
+                  <User size={15} />
                   My Account
                 </Link>
-                <div
-                  className="cursor-pointer rounded-2xl px-3 py-2 text-sm font-medium text-[color:var(--accent-strong)] hover:bg-white"
-                  onClick={() => {
+                <button
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                  onClick={async () => {
+                    if (supabase) {
+                      await supabase.auth.signOut();
+                    }
                     localStorage.removeItem("token");
                     window.dispatchEvent(new Event("auth-changed"));
                     setLoggedIn(false);
@@ -121,8 +140,9 @@ export default function Navbar() {
                     router.push("/");
                   }}
                 >
+                  <LogOut size={15} />
                   Logout
-                </div>
+                </button>
               </div>
             )}
           </div>
@@ -148,22 +168,39 @@ export default function Navbar() {
             <Link href="/" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-white">
               Home
             </Link>
-            {loggedIn && (
+            {loggedIn ? (
               <>
-                <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-white">
+                <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-gray-50">
                   Dashboard
                 </Link>
-                <Link href="/dashboard/tutors" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-white">
+                <Link href="/dashboard/tutors" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-gray-50">
                   Search Tutors
                 </Link>
-                <Link href="/dashboard/virtual-sessions" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-white">
+                <Link href="/dashboard/virtual-sessions" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-gray-50">
                   Reminders
                 </Link>
+                <Link href="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-gray-50">
+                  <User size={16} />
+                  My Account
+                </Link>
+                <button
+                  className="flex w-full items-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
+                  onClick={async () => {
+                    if (supabase) await supabase.auth.signOut();
+                    localStorage.removeItem("token");
+                    window.dispatchEvent(new Event("auth-changed"));
+                    setMobileMenuOpen(false);
+                    setLoggedIn(false);
+                    router.push("/");
+                  }}
+                >
+                  <LogOut size={16} />
+                  Logout
+                </button>
               </>
-            )}
-            {!loggedIn && (
+            ) : (
               <>
-                <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-white">
+                <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-gray-50">
                   Login
                 </Link>
                 <Link href="/register" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl primary-button px-4 py-3 text-sm font-semibold text-white">

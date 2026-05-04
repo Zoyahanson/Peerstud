@@ -6,8 +6,6 @@ import { ArrowRight, BellRing, CalendarClock, LayoutPanelTop, Sparkles } from "l
 import Sidebar from "../../components/sidebar";
 import { authedFetch, getToken } from "../../lib/api";
 
-const DEMO_TOKEN = "demo-token";
-
 type UserSettings = {
   desktop_reminders: boolean;
   reminder_minutes_before: number;
@@ -40,16 +38,15 @@ const QUICK_ACTIONS = [
 export default function Dashboard() {
   const router = useRouter();
   const [token] = useState<string | null>(() => getToken());
-  const isDemo = token === DEMO_TOKEN;
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [upcomingSessions, setUpcomingSessions] = useState<SessionItem[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
-    if (!token && !isDemo) {
+    if (!token) {
       router.push("/login");
     }
-  }, [isDemo, router, token]);
+  }, [router, token]);
 
   useEffect(() => {
     if (!token) {
@@ -85,32 +82,37 @@ export default function Dashboard() {
 
           <section className="asym-grid items-start">
             <div className="page-card-strong overflow-hidden p-6 sm:p-8 lg:p-10">
-              <div className="flex flex-col gap-10 xl:flex-row xl:items-end xl:justify-between">
-                <div className="max-w-3xl">
-                  <p className="section-kicker">Overview</p>
-                  <h2 className="mt-4 max-w-2xl text-3xl font-black tracking-tight text-[color:var(--foreground)] sm:text-4xl">
-                    Keep sessions, reminders, and shortcuts close.
-                  </h2>
-                </div>
-
-                <div className="page-card w-full max-w-md p-6">
-                  <p className="section-kicker">Next Session</p>
-                  <p className="mt-3 text-2xl font-bold text-[color:var(--foreground)]">
-                    {upcomingSessions[0]?.topic_focus ?? "No session booked yet"}
-                  </p>
-                  <p className="mt-3 text-sm leading-6 text-[color:var(--ink-muted)]">
-                    {upcomingSessions[0]
-                      ? `${upcomingSessions[0].classroom_name} • ${new Date(upcomingSessions[0].start_time).toLocaleString()}`
-                      : "Create or join a session."}
-                  </p>
-                  <button
-                    onClick={() => router.push("/dashboard/virtual-sessions")}
-                    className="primary-button mt-6 inline-flex items-center gap-2 px-5 py-3 text-sm hover:-translate-y-0.5"
+              <div className="flex items-center gap-3 mb-2">
+                <CalendarClock size={18} className="text-[color:var(--accent-strong)]" />
+                <p className="section-kicker">Next Session</p>
+              </div>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-[color:var(--foreground)] sm:text-4xl">
+                {upcomingSessions[0]?.topic_focus ?? "No session booked yet"}
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-[color:var(--ink-muted)]">
+                {upcomingSessions[0]
+                  ? `${upcomingSessions[0].classroom_name} • ${new Date(upcomingSessions[0].start_time).toLocaleString()}`
+                  : "Head to Virtual Sessions to schedule or join one."}
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  onClick={() => router.push("/dashboard/virtual-sessions")}
+                  className="primary-button inline-flex items-center gap-2 px-5 py-3 text-sm hover:-translate-y-0.5"
+                >
+                  {upcomingSessions[0] ? "Open Session" : "Schedule a Session"}
+                  <ArrowRight size={16} />
+                </button>
+                {upcomingSessions[0]?.meet_link && (
+                  <a
+                    href={upcomingSessions[0].meet_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ghost-button inline-flex items-center gap-2 px-5 py-3 text-sm hover:-translate-y-0.5"
                   >
-                    Open Scheduling
+                    Join Meet
                     <ArrowRight size={16} />
-                  </button>
-                </div>
+                  </a>
+                )}
               </div>
             </div>
 

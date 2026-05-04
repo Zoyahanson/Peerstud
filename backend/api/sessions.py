@@ -30,7 +30,9 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 def _serialize_session(item: StudySession, current_user_id: str) -> SessionResponse:
-    participants = [participant for participant in item.participants if participant.status == "confirmed"]
+    participants = list(item.participants)
+    confirmed_participants = [participant for participant in participants if participant.status == "confirmed"]
+    invited_participants = [participant for participant in participants if participant.status == "invited"]
     average_rating = None
     if item.ratings:
         average_rating = round(sum(rating.score for rating in item.ratings) / len(item.ratings), 2)
@@ -49,8 +51,12 @@ def _serialize_session(item: StudySession, current_user_id: str) -> SessionRespo
         meet_link=item.meet_link,
         calendar_event_id=item.calendar_event_id,
         status=item.status,
-        participant_count=len(participants),
-        joined=any(participant.user_id == current_user_id for participant in participants),
+        participant_count=len(confirmed_participants),
+        invited_count=len(invited_participants),
+        joined=any(
+            participant.user_id == current_user_id and participant.status == "confirmed"
+            for participant in participants
+        ),
         average_rating=average_rating,
         participants=[
             SessionParticipantResponse(
@@ -161,6 +167,23 @@ def create_session(
     db.add(study_session)
     db.flush()
     db.add(SessionParticipant(session_id=study_session.id, user_id=current_user.id, status="confirmed"))
+
+    invite_emails = {str(email).strip().lower() for email in payload.invite_emails if str(email).strip()}
+    if invite_emails:
+        invited_users = (
+            db.query(User)
+            .filter(func.lower(User.email).in_(invite_emails), User.id != current_user.id)
+            .all()
+        )
+        for invited_user in invited_users:
+            db.add(
+                SessionParticipant(
+                    session_id=study_session.id,
+                    user_id=invited_user.id,
+                    status="invited",
+                )
+            )
+
     db.commit()
 
     created = (
@@ -200,6 +223,11 @@ def join_session(
     participant = next((item for item in study_session.participants if item.user_id == current_user.id), None)
     if not participant:
         db.add(SessionParticipant(session_id=study_session.id, user_id=current_user.id, status="confirmed"))
+        db.commit()
+    elif participant.status != "confirmed":
+        participant.status = "confirmed"
+        participant.joined_at = datetime.now(timezone.utc)
+        db.add(participant)
         db.commit()
 
     refreshed = (

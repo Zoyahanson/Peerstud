@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Hash, Plus, Users, X } from "lucide-react";
+import { CheckCircle2, Hash, MessageCircle, Plus, Users, X } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
 import { authedFetch, getToken } from "../../../lib/api";
 
@@ -65,7 +65,7 @@ function toDateTimeLocal(value: string | null): string {
   return new Date(value).toISOString().slice(0, 16);
 }
 
-export default function StudyGroupsPage() {
+export default function StudyGroupsPage({ onSwitchToChat }: { onSwitchToChat?: () => void } = {}) {
   const router = useRouter();
   const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
@@ -197,21 +197,39 @@ export default function StudyGroupsPage() {
       <Sidebar />
 
       {/* Telegram-style group browser */}
-      <main className="flex min-h-0 flex-1 overflow-hidden" style={{ height: "calc(100vh - 4rem)" }}>
+      <main className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4" style={{ height: "calc(100vh - 4rem)" }}>
         {/* Left panel – group list */}
-        <div className="flex w-72 shrink-0 flex-col border-r border-white/10 bg-[color:var(--sidebar-bg)] xl:w-80">
+        <div className="flex w-72 shrink-0 flex-col rounded-[2rem] border border-white/10 bg-[color:var(--sidebar-bg)] shadow-xl xl:w-80">
           {/* Header */}
           <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4">
-            <div>
-              <h2 className="text-base font-bold text-white">Study Groups</h2>
-              <p className="text-[11px] text-[color:var(--sidebar-muted)]">
-                {groups.length} active group{groups.length !== 1 ? "s" : ""}
-              </p>
-            </div>
+            {onSwitchToChat ? (
+              <div className="flex flex-1 gap-1 rounded-xl bg-white/10 p-1">
+                <button
+                  onClick={onSwitchToChat}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-[color:var(--sidebar-text)] transition hover:text-white"
+                >
+                  <MessageCircle size={13} />
+                  Chats
+                </button>
+                <button
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[color:var(--navy-dark)] px-2 py-1.5 text-xs font-semibold text-white transition"
+                >
+                  <Users size={13} />
+                  Groups
+                </button>
+              </div>
+            ) : (
+              <div>
+                <h2 className="text-base font-bold text-white">Study Groups</h2>
+                <p className="text-[11px] text-[color:var(--sidebar-muted)]">
+                  {groups.length} active group{groups.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+            )}
             <button
               onClick={() => { setShowCreateForm(true); setSelectedGroupId(null); }}
               title="Create group"
-              className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-white hover:opacity-90 transition"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-white hover:opacity-90 transition"
             >
               <Plus size={16} />
             </button>
@@ -303,7 +321,7 @@ export default function StudyGroupsPage() {
         {/* Right panel */}
         {showCreateForm ? (
           /* Create group form */
-          <div className="flex flex-1 flex-col overflow-y-auto bg-[color:var(--background)]">
+          <div className="flex flex-1 flex-col overflow-y-auto rounded-[2rem] border border-[color:var(--border)] bg-[color:var(--background)] shadow-xl">
             <div className="border-b border-[color:var(--border)] bg-white px-6 py-4 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color:var(--navy)] text-white">
@@ -395,7 +413,7 @@ export default function StudyGroupsPage() {
           </div>
         ) : selectedGroup ? (
           /* Group detail */
-          <div className="flex flex-1 flex-col overflow-hidden bg-[color:var(--background)]">
+          <div className="flex flex-1 flex-col overflow-hidden rounded-[2rem] border border-[color:var(--border)] bg-[color:var(--background)] shadow-xl">
             {/* Group header */}
             <div className="border-b border-[color:var(--border)] bg-white px-6 py-4 shadow-sm">
               <div className="flex items-center gap-4">
@@ -502,7 +520,7 @@ export default function StudyGroupsPage() {
           </div>
         ) : (
           /* Empty state */
-          <div className="flex flex-1 items-center justify-center bg-[color:var(--background)]">
+          <div className="flex flex-1 items-center justify-center rounded-[2rem] border border-[color:var(--border)] bg-[color:var(--background)] shadow-xl">
             <div className="text-center">
               <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[color:var(--navy-tint)]">
                 <Hash size={36} className="text-[color:var(--navy)]" />
