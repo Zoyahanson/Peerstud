@@ -337,6 +337,18 @@ class TutorLeaderboardEntryResponse(BaseModel):
     badges: list["TutorBadgeResponse"] = Field(default_factory=list)
 
 
+class StudentLeaderboardEntryResponse(BaseModel):
+    rank: int
+    user_id: UUID
+    full_name: str | None
+    email: EmailStr
+    study_points: int
+    sessions_joined: int
+    resources_shared: int
+    streak_days: int
+    study_groups_joined: int
+
+
 class TutorBadgeResponse(BaseModel):
     code: str
     label: str
