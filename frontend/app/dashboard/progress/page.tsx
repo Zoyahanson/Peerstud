@@ -47,12 +47,21 @@ type DbUser = {
   full_name: string | null;
 };
 
+function safeDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function calculateCurrentStreakDays(activityDates: Date[]): number {
-  if (!activityDates.length) {
+  const validDates = activityDates.filter((item) => !Number.isNaN(item.getTime()));
+  if (!validDates.length) {
     return 0;
   }
 
-  const orderedDays = [...new Set(activityDates.map((item) => item.toISOString().slice(0, 10)))].sort().reverse();
+  const orderedDays = [...new Set(validDates.map((item) => item.toISOString().slice(0, 10)))].sort().reverse();
   let streak = 0;
   let previous: Date | null = null;
 
@@ -199,7 +208,11 @@ async function loadProgressViaSupabase(): Promise<{ analytics: UserAnalytics; fr
   }
 
   for (const hosted of hostedRows) {
-    const label = new Date(String((hosted as { start_time: string }).start_time)).toLocaleString("en-US", {
+    const start = safeDate((hosted as { start_time?: string | null }).start_time);
+    if (!start) {
+      continue;
+    }
+    const label = start.toLocaleString("en-US", {
       month: "short",
       year: "numeric",
       timeZone: "UTC",
@@ -208,7 +221,11 @@ async function loadProgressViaSupabase(): Promise<{ analytics: UserAnalytics; fr
   }
 
   for (const joined of joinedRows) {
-    const label = new Date(String((joined as { joined_at: string }).joined_at)).toLocaleString("en-US", {
+    const joinedAt = safeDate((joined as { joined_at?: string | null }).joined_at);
+    if (!joinedAt) {
+      continue;
+    }
+    const label = joinedAt.toLocaleString("en-US", {
       month: "short",
       year: "numeric",
       timeZone: "UTC",
@@ -217,9 +234,9 @@ async function loadProgressViaSupabase(): Promise<{ analytics: UserAnalytics; fr
   }
 
   const activityDates: Date[] = [
-    ...hostedRows.map((row) => new Date(String((row as { created_at: string }).created_at))),
-    ...joinedRows.map((row) => new Date(String((row as { joined_at: string }).joined_at))),
-    ...joinedGroupRows.map((row) => new Date(String((row as { joined_at: string }).joined_at))),
+    ...hostedRows.map((row) => safeDate((row as { created_at?: string | null }).created_at)).filter((item): item is Date => item !== null),
+    ...joinedRows.map((row) => safeDate((row as { joined_at?: string | null }).joined_at)).filter((item): item is Date => item !== null),
+    ...joinedGroupRows.map((row) => safeDate((row as { joined_at?: string | null }).joined_at)).filter((item): item is Date => item !== null),
   ];
 
   const hostedHistory = [...hostedRows]
@@ -286,7 +303,10 @@ async function loadProgressViaSupabase(): Promise<{ analytics: UserAnalytics; fr
     for (const row of friendJoinedResult.data ?? []) {
       const userId = String((row as { user_id: string }).user_id);
       joinedByUser.set(userId, (joinedByUser.get(userId) ?? 0) + 1);
-      activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), new Date(String((row as { joined_at: string }).joined_at))]);
+      const joinedAt = safeDate((row as { joined_at?: string | null }).joined_at);
+      if (joinedAt) {
+        activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), joinedAt]);
+      }
     }
     for (const row of friendResourcesResult.data ?? []) {
       const userId = String((row as { uploaded_by_user_id: string }).uploaded_by_user_id);
@@ -295,11 +315,17 @@ async function loadProgressViaSupabase(): Promise<{ analytics: UserAnalytics; fr
     for (const row of friendGroupsResult.data ?? []) {
       const userId = String((row as { user_id: string }).user_id);
       groupsByUser.set(userId, (groupsByUser.get(userId) ?? 0) + 1);
-      activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), new Date(String((row as { joined_at: string }).joined_at))]);
+      const joinedAt = safeDate((row as { joined_at?: string | null }).joined_at);
+      if (joinedAt) {
+        activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), joinedAt]);
+      }
     }
     for (const row of friendHostedResult.data ?? []) {
       const userId = String((row as { host_user_id: string }).host_user_id);
-      activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), new Date(String((row as { created_at: string }).created_at))]);
+      const createdAt = safeDate((row as { created_at?: string | null }).created_at);
+      if (createdAt) {
+        activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), createdAt]);
+      }
     }
 
     friendsProgress = (friendUsersResult.data ?? []).map((friend) => {
