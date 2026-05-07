@@ -99,6 +99,10 @@ export default function Register() {
       }
 
       if (data.session?.access_token) {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("token", data.session.access_token);
+          window.dispatchEvent(new Event("auth-changed"));
+        }
         router.push("/dashboard");
         return;
       }

@@ -50,6 +50,10 @@ export default function Login() {
         setError("Sign in did not return an active session.");
         return;
       }
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("token", data.session.access_token);
+        window.dispatchEvent(new Event("auth-changed"));
+      }
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed.");
