@@ -92,7 +92,7 @@ export default function LeaderboardPage() {
 
     Promise.all([
       authedFetch<TutorLeaderboardEntry[]>("/leaderboard/tutors?limit=20"),
-      authedFetch<StudentLeaderboardEntry[]>("/leaderboard/students?limit=20").catch(() => [] as StudentLeaderboardEntry[]),
+      authedFetch<StudentLeaderboardEntry[]>("/leaderboard/students?limit=20"),
     ])
       .then(([tutorRes, studentRes]) => {
         setTutors(tutorRes);

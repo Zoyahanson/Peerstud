@@ -1,6 +1,18 @@
 import type { NextConfig } from "next";
 
+const RENDER_API_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+
 const nextConfig: NextConfig = {
+  async rewrites() {
+    // Proxy /api/render/* → Render backend so the browser never makes a
+    // cross-origin request directly to Render (avoids CORS issues in local dev).
+    return [
+      {
+        source: "/api/render/:path*",
+        destination: `${RENDER_API_URL}/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {

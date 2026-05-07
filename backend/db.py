@@ -12,7 +12,10 @@ from backend.config import settings
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
-    connect_args={"options": "-c search_path=public,extensions"},
+    connect_args={
+        "options": "-c search_path=public,extensions",
+        "prepare_threshold": None,
+    },
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
@@ -37,6 +40,10 @@ def ensure_runtime_schema() -> None:
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS weak_topics TEXT",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS credibility_score DOUBLE PRECISION NOT NULL DEFAULT 0",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ratings_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS study_points INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS tutor_points INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS total_points INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS points_last_computed_at TIMESTAMPTZ",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS offer_text TEXT",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS need_text TEXT",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS offer_vector vector(1536)",

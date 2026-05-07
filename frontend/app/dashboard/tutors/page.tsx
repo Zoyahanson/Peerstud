@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronUp, Search, Sparkles, Star } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Mail, MessageCircle, Search, Sparkles, Star } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
 import { authedFetch, getToken } from "../../../lib/api";
 
@@ -44,6 +44,10 @@ type TutorReview = {
   rater_name: string | null;
 };
 
+type ChatConversationSummary = {
+  conversation_id: string;
+};
+
 function buildQuery(filters: {
   nameQuery: string;
   subject: string;
@@ -65,6 +69,33 @@ function buildQuery(filters: {
   return params.toString();
 }
 
+const COURSE_CODE_TO_TITLE: Record<string, string> = {
+  COMP1126: "Introduction to Computing I",
+  COMP1127: "Introduction to Computing II",
+  COMP1161: "Object-Oriented Programming",
+  COMP1210: "Mathematics for Computing",
+  COMP2130: "Systems Programming",
+  COMP2140: "Software Engineering",
+  COMP2171: "Object Oriented Design and Implementation",
+  COMP2190: "Net-Centric Computing",
+  COMP2201: "Discrete Mathematics for Computer Science",
+  COMP2211: "Analysis of Algorithms",
+  COMP2340: "Computer Systems Organization",
+  INFO2101: "Probability and Statistics for Computing",
+  INFO2111: "Data Structures",
+  INFO2180: "Dynamic Web Development I",
+  COMP3101: "Operating Systems",
+  COMP3161: "Database Management Systems",
+  COMP3191: "Principles of Computer Networking",
+  COMP3220: "Principles of Artificial Intelligence",
+  COMP3652: "Language Processors",
+  SWEN3165: "Software Testing",
+};
+
+function resolveCourseLabel(code: string): string {
+  return COURSE_CODE_TO_TITLE[code] ?? code;
+}
+
 function TutorsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -83,6 +114,8 @@ function TutorsPageContent() {
   const [suggestions, setSuggestions] = useState<TutorSuggestion[]>([]);
   const [selectedTutorId, setSelectedTutorId] = useState("");
   const [reviews, setReviews] = useState<TutorReview[]>([]);
+  const [reachingOutTutorId, setReachingOutTutorId] = useState("");
+  const suggestionsRailRef = useRef<HTMLDivElement>(null);
 
   const selectedTutor = useMemo(() => tutors.find((item) => item.user_id === selectedTutorId) ?? null, [selectedTutorId, tutors]);
 
@@ -151,12 +184,35 @@ function TutorsPageContent() {
     }
   }
 
+  async function handleReachOut(tutor: TutorSuggestion) {
+    try {
+      setStatusMessage("");
+      setReachingOutTutorId(tutor.user_id);
+      const conversation = await authedFetch<ChatConversationSummary>("/chat/conversations", {
+        method: "POST",
+        body: JSON.stringify({ peer_user_id: tutor.user_id }),
+      });
+      router.push(`/dashboard/chat?conversation=${encodeURIComponent(conversation.conversation_id)}`);
+    } catch (error: unknown) {
+      setStatusMessage(error instanceof Error ? error.message : "Could not open chat with tutor.");
+    } finally {
+      setReachingOutTutorId("");
+    }
+  }
+
+  function scrollSuggestions(direction: "left" | "right") {
+    const rail = suggestionsRailRef.current;
+    if (!rail) return;
+    const distance = Math.max(320, Math.floor(rail.clientWidth * 0.82));
+    rail.scrollBy({ left: direction === "right" ? distance : -distance, behavior: "smooth" });
+  }
+
   return (
     <div className="page-shell">
       <Sidebar />
 
       <main className="page-main">
-        <div className="page-content">
+        <div className="page-content max-w-7xl overflow-x-hidden">
         <div className="page-header">
           <h1 className="page-title">Tutors</h1>
           <p className="page-subtitle">Search and compare tutors.</p>
@@ -168,7 +224,7 @@ function TutorsPageContent() {
           {/* Primary search bar */}
           <form
             onSubmit={(e) => { e.preventDefault(); handleFilter(); }}
-            className="flex gap-2"
+            className="flex flex-col gap-2 sm:flex-row"
           >
             <div className="relative flex-1">
               <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--ink-subtle)]" />
@@ -183,14 +239,14 @@ function TutorsPageContent() {
             <button
               type="submit"
               disabled={loading}
-              className="primary-button px-5 py-2 disabled:opacity-60"
+              className="primary-button w-full px-5 py-2 disabled:opacity-60 sm:w-auto"
             >
               {loading ? "Searching…" : "Search"}
             </button>
             <button
               type="button"
               onClick={() => setFiltersOpen((v) => !v)}
-              className="secondary-button flex items-center gap-1.5 px-4 py-2 text-sm"
+              className="secondary-button flex w-full items-center justify-center gap-1.5 px-4 py-2 text-sm sm:w-auto"
             >
               Filters
               {filtersOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -258,30 +314,52 @@ function TutorsPageContent() {
 
         {suggestions.length > 0 && (
           <section className="mt-6">
-            <div className="mb-4 flex items-center gap-2">
+            <div className="mb-4 flex flex-wrap items-center gap-2">
               <Sparkles size={18} className="text-[color:var(--accent-strong)]" />
               <h2 className="text-lg font-bold text-[color:var(--foreground)]">Suggested for You</h2>
-              <span className="ml-1 rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--accent-strong)]">
+              <span className="rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--accent-strong)]">
                 Based on your weak topics
               </span>
+              <div className="ml-auto hidden items-center gap-2 md:flex">
+                <button
+                  type="button"
+                  aria-label="Scroll suggestions left"
+                  onClick={() => scrollSuggestions("left")}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--border)] bg-white text-[color:var(--ink-muted)] transition hover:text-[color:var(--foreground)]"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Scroll suggestions right"
+                  onClick={() => scrollSuggestions("right")}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--border)] bg-white text-[color:var(--ink-muted)] transition hover:text-[color:var(--foreground)]"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+            <div
+              ref={suggestionsRailRef}
+              className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 pr-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            >
               {suggestions.map((tutor) => (
                 <article
                   key={tutor.user_id}
-                  className="page-card-strong rounded-2xl p-5 cursor-pointer hover:-translate-y-0.5 transition-transform"
+                  className="page-card-strong min-h-[275px] min-w-[92%] snap-start rounded-3xl border border-[color:var(--border)] bg-gradient-to-br from-white via-white to-[color:var(--accent-soft)] p-5 shadow-[0_18px_44px_-32px_rgba(0,0,0,0.45)] transition-transform hover:-translate-y-0.5 sm:min-w-[20rem] sm:p-6 lg:min-w-[22rem] xl:min-w-[24rem]"
                   onClick={() => {
                     setSelectedTutorId(tutor.user_id);
                     document.getElementById("tutor-list")?.scrollIntoView({ behavior: "smooth" });
                   }}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-[color:var(--foreground)]">{tutor.full_name ?? tutor.email}</p>
+                      <p className="text-base font-semibold text-[color:var(--foreground)]">{tutor.full_name ?? tutor.email}</p>
                       <p className="mt-0.5 text-xs text-[color:var(--ink-muted)]">{tutor.faculty ?? ""}{tutor.campus ? ` • ${tutor.campus}` : ""}</p>
                     </div>
-                    <div className="flex items-center gap-1 rounded-full bg-[color:var(--accent-soft)] px-2 py-1">
-                      <Star size={11} className="text-[color:var(--accent-strong)]" fill="currentColor" />
+                    <div className="flex items-center gap-1 rounded-full bg-[color:var(--accent-soft)] px-2.5 py-1.5">
+                      <Star size={12} className="text-[color:var(--accent-strong)]" fill="currentColor" />
                       <span className="text-xs font-bold text-[color:var(--accent-strong)]">
                         {(tutor.match_score * 100).toFixed(0)}%
                       </span>
@@ -298,7 +376,7 @@ function TutorsPageContent() {
                     </div>
                   )}
 
-                  <p className="mt-3 text-xs leading-5 text-[color:var(--ink-muted)] line-clamp-2">{tutor.match_reason}</p>
+                  <p className="mt-3 min-h-[44px] text-sm leading-5 text-[color:var(--ink-muted)] line-clamp-2">{tutor.match_reason}</p>
 
                   <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--ink-muted)]">
                     <span>{tutor.credibility_score.toFixed(1)} ★ ({tutor.ratings_count} reviews)</span>
@@ -308,13 +386,42 @@ function TutorsPageContent() {
                       </span>
                     )}
                   </div>
+
+                  <div className="mt-4 grid grid-cols-3 gap-2" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="secondary-button inline-flex items-center justify-center px-3 py-2 text-xs"
+                      onClick={() => {
+                        setSelectedTutorId(tutor.user_id);
+                        document.getElementById("tutor-list")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                    >
+                      View
+                    </button>
+                    <a
+                      href={`mailto:${tutor.email}`}
+                      className="secondary-button inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs"
+                    >
+                      <Mail size={12} />
+                      Email
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleReachOut(tutor)}
+                      disabled={reachingOutTutorId === tutor.user_id}
+                      className="primary-button inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs disabled:opacity-60"
+                    >
+                      <MessageCircle size={12} />
+                      {reachingOutTutorId === tutor.user_id ? "Opening..." : "Message"}
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
           </section>
         )}
 
-        <section id="tutor-list" className="mt-6 grid gap-6 xl:grid-cols-[0.62fr_0.38fr]">
+        <section id="tutor-list" className="mt-6 grid gap-6 lg:grid-cols-[0.62fr_0.38fr]">
           <div className="space-y-4">
             {tutors.map((tutor) => (
               <article
@@ -323,7 +430,7 @@ function TutorsPageContent() {
                   tutor.user_id === selectedTutorId ? "border-[color:var(--accent)] bg-[rgba(130,180,255,0.12)]" : "border-[color:var(--border)] bg-white"
                 }`}
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
                   <div>
                     <h2 className="text-lg font-semibold text-gray-900">{tutor.full_name ?? tutor.email}</h2>
                     <p className="text-sm text-gray-600">{tutor.email}</p>
@@ -337,7 +444,7 @@ function TutorsPageContent() {
                   </div>
                   <button
                     onClick={() => setSelectedTutorId(tutor.user_id)}
-                    className="secondary-button px-3 py-2 text-sm hover:bg-white"
+                    className="secondary-button w-full px-3 py-2 text-sm hover:bg-white sm:w-auto"
                   >
                     View Feedback
                   </button>
@@ -359,7 +466,9 @@ function TutorsPageContent() {
                 </div>
 
                 <div className="mt-3 text-sm text-gray-600">
-                  Courses: {tutor.current_courses.length ? tutor.current_courses.join(", ") : "No courses listed"}
+                  Courses: {tutor.current_courses.length
+                    ? tutor.current_courses.map(resolveCourseLabel).join(", ")
+                    : "No courses listed"}
                 </div>
               </article>
             ))}

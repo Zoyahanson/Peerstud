@@ -331,6 +331,8 @@ class TutorLeaderboardEntryResponse(BaseModel):
     user_id: UUID
     full_name: str | None
     email: EmailStr
+    tutor_points: int
+    total_points: int
     credibility_score: float
     ratings_count: int
     sessions_hosted: int
@@ -343,6 +345,7 @@ class StudentLeaderboardEntryResponse(BaseModel):
     full_name: str | None
     email: EmailStr
     study_points: int
+    total_points: int
     sessions_joined: int
     resources_shared: int
     streak_days: int

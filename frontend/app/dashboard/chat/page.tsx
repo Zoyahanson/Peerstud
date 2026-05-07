@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { MessageCircle, Plus, Search, Send, Users, X } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Menu, MessageCircle, PanelLeftClose, Plus, Search, Send, Users, X } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
 import { authedFetch, getToken } from "../../../lib/api";
 
 const CHAT_POLL_INTERVAL_MS = 3000;
+const MOBILE_SIDEBAR_STORAGE_KEY = "peerstud.chat.mobileConversationsOpen";
 
 type ChatContact = {
   user_id: string;
@@ -41,6 +42,7 @@ export default function ChatPage({
   onTabChange?: (t: "chat" | "groups") => void;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string>("");
@@ -54,14 +56,26 @@ export default function ChatPage({
   const [searchResults, setSearchResults] = useState<ChatContact[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showConversationsPanel, setShowConversationsPanel] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const requestedConversationId = searchParams.get("conversation") ?? "";
 
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.conversation_id === selectedConversationId) ?? null,
     [conversations, selectedConversationId],
   );
+
+  const setConversationsPanelVisibility = useCallback((nextValue: boolean) => {
+    setShowConversationsPanel(nextValue);
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (window.innerWidth < 1024) {
+      window.localStorage.setItem(MOBILE_SIDEBAR_STORAGE_KEY, nextValue ? "1" : "0");
+    }
+  }, []);
 
   const refreshConversations = useCallback(async () => {
     const nextConversations = await authedFetch<ChatConversation[]>("/chat/conversations");
@@ -96,6 +110,10 @@ export default function ChatPage({
       .then(([contactResponse, conversationResponse]) => {
         setContacts(contactResponse);
         setConversations(conversationResponse);
+        if (requestedConversationId && conversationResponse.some((item) => item.conversation_id === requestedConversationId)) {
+          setSelectedConversationId(requestedConversationId);
+          return;
+        }
         if (conversationResponse[0]?.conversation_id) {
           setSelectedConversationId(conversationResponse[0].conversation_id);
         }
@@ -104,7 +122,35 @@ export default function ChatPage({
         setStatusMessage(error instanceof Error ? error.message : "Failed to load chat.");
       })
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [requestedConversationId, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const savedMobileValue = window.localStorage.getItem(MOBILE_SIDEBAR_STORAGE_KEY);
+    const mobileOpen = savedMobileValue == null ? false : savedMobileValue === "1";
+
+    if (mediaQuery.matches) {
+      setShowConversationsPanel(true);
+    } else {
+      setShowConversationsPanel(mobileOpen);
+    }
+
+    function handleViewportChange(event: MediaQueryListEvent) {
+      if (event.matches) {
+        setShowConversationsPanel(true);
+        return;
+      }
+      const currentSaved = window.localStorage.getItem(MOBILE_SIDEBAR_STORAGE_KEY);
+      setShowConversationsPanel(currentSaved === "1");
+    }
+
+    mediaQuery.addEventListener("change", handleViewportChange);
+    return () => mediaQuery.removeEventListener("change", handleViewportChange);
+  }, []);
 
   useEffect(() => {
     if (!selectedConversationId) {
@@ -203,6 +249,9 @@ export default function ChatPage({
       setSelectedConversationId(conversation.conversation_id);
       setUserSearchQuery("");
       setShowSearchResults(false);
+      if (typeof window !== "undefined" && window.innerWidth < 1024) {
+        setConversationsPanelVisibility(false);
+      }
     } catch (error: unknown) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to open conversation.");
     } finally {
@@ -242,9 +291,27 @@ export default function ChatPage({
       <Sidebar />
 
       {/* Telegram-style full-height messenger */}
-      <main className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4" style={{ height: "calc(100vh - 4rem)" }}>
+      <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-3 sm:p-4 lg:flex-row lg:p-4" style={{ height: "calc(100vh - 4rem)" }}>
+        <div className="flex items-center justify-between lg:hidden">
+          <button
+            type="button"
+            onClick={() => setConversationsPanelVisibility(!showConversationsPanel)}
+            className="secondary-button inline-flex items-center gap-2 px-4 py-2 text-sm"
+          >
+            <Menu size={15} />
+            {showConversationsPanel ? "Hide Conversations" : "Show Conversations"}
+          </button>
+          {selectedConversation && (
+            <p className="max-w-[48vw] truncate text-xs text-[color:var(--ink-muted)]">
+              {selectedConversation.peer.full_name ?? selectedConversation.peer.email}
+            </p>
+          )}
+        </div>
+
         {/* Left panel – conversation list */}
-        <div className="flex w-72 shrink-0 flex-col rounded-[2rem] border border-white/10 bg-[color:var(--sidebar-bg)] shadow-xl xl:w-80">
+        <div
+          className={`${showConversationsPanel ? "flex" : "hidden"} h-[44vh] w-full shrink-0 flex-col rounded-[1.5rem] border border-white/10 bg-[color:var(--sidebar-bg)] shadow-xl lg:flex lg:h-auto lg:w-72 lg:rounded-[2rem] xl:w-80`}
+        >
           {/* Panel header with tab toggle */}
           <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4">
             {onTabChange ? (
@@ -275,6 +342,14 @@ export default function ChatPage({
             ) : (
               <h2 className="flex-1 text-base font-bold text-white">Messages</h2>
             )}
+            <button
+              type="button"
+              onClick={() => setConversationsPanelVisibility(false)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[color:var(--sidebar-text)] lg:hidden"
+              aria-label="Collapse conversations"
+            >
+              <PanelLeftClose size={14} />
+            </button>
           </div>
 
           {/* User search – find anyone to message */}
@@ -348,7 +423,12 @@ export default function ChatPage({
               return (
                 <button
                   key={conv.conversation_id}
-                  onClick={() => setSelectedConversationId(conv.conversation_id)}
+                  onClick={() => {
+                    setSelectedConversationId(conv.conversation_id);
+                    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                      setConversationsPanelVisibility(false);
+                    }
+                  }}
                   className={`flex w-full items-center gap-3 px-3 py-3 text-left transition ${
                     active ? "bg-white/15" : "hover:bg-white/[0.08]"
                   }`}
@@ -384,7 +464,7 @@ export default function ChatPage({
 
         {/* Right panel – message thread */}
         {selectedConversation ? (
-          <div className="flex flex-1 flex-col overflow-hidden rounded-[2rem] border border-[color:var(--border)] bg-[color:var(--background)] shadow-xl">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1.5rem] border border-[color:var(--border)] bg-[color:var(--background)] shadow-xl lg:rounded-[2rem]">
             {/* Chat header */}
             <div className="flex items-center gap-3 border-b border-[color:var(--border)] bg-white px-5 py-3 shadow-sm">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--navy)] text-sm font-semibold text-white">
@@ -399,7 +479,7 @@ export default function ChatPage({
             </div>
 
             {/* Messages area */}
-            <div ref={messageListRef} className="flex-1 overflow-y-auto px-5 py-4">
+            <div ref={messageListRef} className="flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
               <div className="flex flex-col gap-3">
                 {messages.length === 0 && !loading && (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -419,7 +499,7 @@ export default function ChatPage({
                           {(msg.sender_full_name ?? "?").slice(0, 2).toUpperCase()}
                         </div>
                       )}
-                      <div className={`flex max-w-[72%] flex-col gap-1 ${isMe ? "items-end" : "items-start"}`}>
+                      <div className={`flex max-w-[84%] flex-col gap-1 sm:max-w-[72%] ${isMe ? "items-end" : "items-start"}`}>
                         <div
                           className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                             isMe
@@ -440,7 +520,7 @@ export default function ChatPage({
             </div>
 
             {/* Message input */}
-            <div className="border-t border-[color:var(--border)] bg-white px-4 py-3">
+            <div className="border-t border-[color:var(--border)] bg-white px-3 py-3 sm:px-4">
               {statusMessage && (
                 <p className="mb-2 text-xs text-[color:var(--accent-strong)]">{statusMessage}</p>
               )}
@@ -470,7 +550,7 @@ export default function ChatPage({
             </div>
           </div>
         ) : (
-          <div className="flex flex-1 items-center justify-center rounded-[2rem] border border-[color:var(--border)] bg-[color:var(--background)] shadow-xl">
+          <div className="flex min-h-[40vh] flex-1 items-center justify-center rounded-[1.5rem] border border-[color:var(--border)] bg-[color:var(--background)] shadow-xl lg:min-h-0 lg:rounded-[2rem]">
             <div className="text-center">
               <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[color:var(--navy-tint)]">
                 <MessageCircle size={36} className="text-[color:var(--navy)]" />

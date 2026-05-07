@@ -79,6 +79,19 @@ export default function VirtualRoomPage() {
           {statusMessage && <p className="text-sm text-[color:var(--accent-strong)]">{statusMessage}</p>}
 
           {!loading && sessionItem && roomUrl && (
+            <section className="mb-4 rounded-[1.25rem] border border-[color:var(--border)] bg-white/80 p-4">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--accent-strong)]">Moderator Note</h2>
+              <p className="mt-2 text-sm text-[color:var(--ink-muted)]">
+                Jitsi may show that the conference has not started when no moderator is in the room yet. A moderator is needed
+                to start the meeting and manage controls like lobby, mute permissions, and participant flow.
+              </p>
+              <p className="mt-2 text-sm text-[color:var(--ink-muted)]">
+                If prompted in Jitsi, the host can log in to claim moderator privileges.
+              </p>
+            </section>
+          )}
+
+          {!loading && sessionItem && roomUrl && (
             <section className="page-card overflow-hidden p-3 sm:p-4">
               <iframe
                 title={`Virtual room for ${sessionItem.classroom_name}`}

@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-05-07T21:31:27.019797+00:00",
+  "default_password": "peerstud123!",
+  "auth_note": "Seed script attempts to create matching Supabase Auth users via Admin API.",
+  "auth_sync": {
+    "created": 50,
+    "skipped": 0,
+    "failed": 0
+  },
+  "summary": {
+    "users": 50,
+    "tutors": 15,
+    "courses": 50,
+    "sessions": 52,
+    "study_groups": 22,
+    "resources": 39,
+    "ratings": 38,
+    "conversations": 41,
+    "messages": 42
+  }
+}

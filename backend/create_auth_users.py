@@ -7,7 +7,9 @@ import os
 import sys
 from pathlib import Path
 import requests
-import json
+from dataclasses import dataclass
+
+from sqlalchemy import or_
 
 # Add backend to path
 backend_path = Path(__file__).parent
@@ -17,29 +19,39 @@ sys.path.insert(0, str(backend_path))
 from dotenv import load_dotenv
 load_dotenv(backend_path / ".env")
 
-# Seeded user credentials
-SEEDED_USERS = [
-    {
-        "email": "alana.morgan@mymona.uwi.edu",
-        "password": "peerstud123!",
-        "user_metadata": {"first_name": "Alana", "last_name": "Morgan"},
-    },
-    {
-        "email": "dwayne.brown@mymona.uwi.edu",
-        "password": "peerstud123!",
-        "user_metadata": {"first_name": "Dwayne", "last_name": "Brown"},
-    },
-    {
-        "email": "kayla.reid@uwi.edu.jm",
-        "password": "peerstud123!",
-        "user_metadata": {"first_name": "Kayla", "last_name": "Reid"},
-    },
-    {
-        "email": "malik.thomas@mymona.uwi.edu",
-        "password": "peerstud123!",
-        "user_metadata": {"first_name": "Malik", "last_name": "Thomas"},
-    },
-]
+from backend.db import SessionLocal
+from backend.models import User
+
+
+DEFAULT_SEED_PASSWORD = "peerstud123!"
+
+
+@dataclass(frozen=True)
+class AuthSeedUser:
+    email: str
+    password: str
+    full_name: str | None
+
+
+def _load_seed_users_from_db() -> list[AuthSeedUser]:
+    session = SessionLocal()
+    try:
+        rows = (
+            session.query(User)
+            .filter(or_(User.auth_uid.like("student_%"), User.auth_uid.like("tutor_%"), User.auth_uid.like("seed-%")))
+            .order_by(User.email.asc())
+            .all()
+        )
+        return [
+            AuthSeedUser(
+                email=user.email,
+                password=DEFAULT_SEED_PASSWORD,
+                full_name=user.full_name,
+            )
+            for user in rows
+        ]
+    finally:
+        session.close()
 
 
 def create_auth_users():
@@ -65,11 +77,20 @@ def create_auth_users():
         "Content-Type": "application/json",
     }
     
+    seeded_users = _load_seed_users_from_db()
+    if not seeded_users:
+        print("⚠️  No seeded users found in public.users (expected auth_uid like student_*/tutor_*/seed-*).")
+        return False
+
+    print(f"📦 Found {len(seeded_users)} seeded users to sync into Supabase Auth")
+
     results = []
     
-    for user_data in SEEDED_USERS:
-        email = user_data["email"]
-        password = user_data["password"]
+    for user_data in seeded_users:
+        email = user_data.email
+        password = user_data.password
+        full_name = user_data.full_name or ""
+        first_name, _, last_name = full_name.partition(" ")
         
         print(f"\n📧 Creating Auth user for {email}...")
         
@@ -79,7 +100,11 @@ def create_auth_users():
                 "email": email,
                 "password": password,
                 "email_confirm": True,  # Auto-confirm email for demo
-                "user_metadata": user_data.get("user_metadata", {}),
+                "user_metadata": {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "full_name": full_name,
+                },
             }
             
             # Create the Auth user via REST API
@@ -148,9 +173,11 @@ def create_auth_users():
     
     print("\n💡 Next steps:")
     print("   1. Try logging in with any of these credentials:")
-    for user in SEEDED_USERS:
-        print(f"      Email: {user['email']}")
-        print(f"      Password: {user['password']}")
+    for user in seeded_users[:10]:
+        print(f"      Email: {user.email}")
+        print(f"      Password: {user.password}")
+    if len(seeded_users) > 10:
+        print(f"      ... and {len(seeded_users) - 10} more seeded accounts")
     print("\n   2. You should be redirected to /dashboard after login")
     
     return len(failed) == 0

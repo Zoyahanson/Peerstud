@@ -2,6 +2,18 @@ import { supabase } from "./supabase";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+function isAbsoluteUrl(value: string): boolean {
+  return value.startsWith("http://") || value.startsWith("https://");
+}
+
+function getBackendBaseUrl(): string {
+  // In browser dev flows, route backend calls through Next.js proxy to avoid CORS.
+  if (typeof window !== "undefined" && isAbsoluteUrl(API_BASE_URL)) {
+    return "/api/render";
+  }
+  return API_BASE_URL;
+}
+
 // Module-level token cache — avoids a localStorage read on every single request.
 // Cleared when the "auth-changed" event fires (login/logout).
 let _cachedToken: string | null = null;
@@ -120,7 +132,7 @@ async function fetchViaBackend<T>(path: string, init: RequestInit, token: string
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getBackendBaseUrl()}${path}`, {
     ...init,
     headers,
   });
@@ -544,7 +556,7 @@ export async function publicFetch<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getBackendBaseUrl()}${path}`, {
     ...init,
     headers,
   });

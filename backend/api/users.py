@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -602,12 +602,12 @@ def add_friend(
     )
 
 
-@router.delete("/me/friends/{friend_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/me/friends/{friend_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 def remove_friend(
     friend_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> None:
+) -> Response:
     friendship = (
         db.query(Friendship)
         .filter(Friendship.user_id == current_user.id, Friendship.friend_user_id == friend_id)
@@ -617,6 +617,7 @@ def remove_friend(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Friendship not found")
     db.delete(friendship)
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

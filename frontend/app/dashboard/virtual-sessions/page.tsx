@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { BellRing, CalendarRange, UsersRound } from "lucide-react";
+import { BellRing, CalendarRange, Plus, Search, UsersRound, X } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
 import { API_BASE_URL, authedFetch, getToken } from "../../../lib/api";
 import { buildDefaultVirtualRoomUrl } from "../../../lib/virtual-room";
@@ -15,6 +15,16 @@ const StudyRoomTimer = dynamic(() => import("../../../components/study-room-time
 type CourseSummary = {
   id: string;
   title: string;
+};
+
+type CourseDisplayItem = CourseSummary & {
+  displayTitle: string;
+};
+
+type CourseDisplayGroup = {
+  key: string;
+  label: string;
+  courses: CourseSummary[];
 };
 
 type SessionParticipant = {
@@ -62,6 +72,15 @@ function groupSessionsByDate(sessions: SessionItem[]): Array<{ date: string; ses
   return Object.entries(grouped).map(([date, items]) => ({ date, sessions: items }));
 }
 
+function deriveCourseGroupLabel(courseTitle: string): string {
+  const match = courseTitle.match(/^([A-Z]{3,5})(\d{4})/);
+  if (!match) {
+    return "Other Courses";
+  }
+  const [, department, numericCode] = match;
+  return `${department} Level ${numericCode[0]}000`;
+}
+
 export default function VirtualSessionsPage() {
   const router = useRouter();
   const [courses, setCourses] = useState<CourseSummary[]>([]);
@@ -82,18 +101,39 @@ export default function VirtualSessionsPage() {
   const [creating, setCreating] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+  const [showPlanner, setShowPlanner] = useState(false);
+  const [plannerVisible, setPlannerVisible] = useState(false);
+  const [showCourseBrowser, setShowCourseBrowser] = useState(false);
+  const [courseQuery, setCourseQuery] = useState("");
 
   const loadData = useCallback(async () => {
     const [courseResponse, sessionResponse, settingsResponse] = await Promise.all([
       authedFetch<CourseSummary[]>("/courses"),
-      authedFetch<SessionItem[]>(selectedCourseId ? `/sessions?course_id=${selectedCourseId}` : "/sessions"),
+      authedFetch<SessionItem[]>("/sessions"),
       authedFetch<UserSettings>("/users/me/settings"),
     ]);
     setCourses(courseResponse);
-    if (!selectedCourseId && courseResponse[0]?.id) {
-      setSelectedCourseId(courseResponse[0].id);
+
+    const dedupedCourses = new Map<string, CourseSummary>();
+    for (const course of [...courseResponse].sort((left, right) => left.title.localeCompare(right.title))) {
+      if (!dedupedCourses.has(course.title)) {
+        dedupedCourses.set(course.title, course);
+      }
     }
-    setSessions(sessionResponse);
+    const uniqueCourseOptions = Array.from(dedupedCourses.values());
+
+    let nextSelectedCourseId = selectedCourseId;
+    if (!nextSelectedCourseId || !uniqueCourseOptions.some((course) => course.id === nextSelectedCourseId)) {
+      nextSelectedCourseId = uniqueCourseOptions[0]?.id ?? "";
+      setSelectedCourseId(nextSelectedCourseId);
+    }
+
+    const selectedCourseTitle = uniqueCourseOptions.find((course) => course.id === nextSelectedCourseId)?.title;
+    const visibleSessions = selectedCourseTitle
+      ? sessionResponse.filter((session) => session.course_title === selectedCourseTitle)
+      : sessionResponse;
+
+    setSessions(visibleSessions);
     setUserSettings(settingsResponse);
     setReminderMinutesBefore(String(settingsResponse.reminder_minutes_before));
   }, [selectedCourseId]);
@@ -113,6 +153,67 @@ export default function VirtualSessionsPage() {
   }, [loadData, router]);
 
   const groupedSessions = useMemo(() => groupSessionsByDate(sessions), [sessions]);
+  const displayCourses = useMemo<CourseSummary[]>(() => {
+    const sorted = [...courses].sort((left, right) => left.title.localeCompare(right.title));
+    const deduped = new Map<string, CourseSummary>();
+    for (const course of sorted) {
+      if (!deduped.has(course.title)) {
+        deduped.set(course.title, course);
+      }
+    }
+    return Array.from(deduped.values());
+  }, [courses]);
+
+  const filteredCourses = useMemo(() => {
+    const query = courseQuery.trim().toLowerCase();
+    if (!query) {
+      return displayCourses;
+    }
+    return displayCourses.filter((course) => course.title.toLowerCase().includes(query));
+  }, [courseQuery, displayCourses]);
+
+  const groupedFilteredCourses = useMemo<CourseDisplayGroup[]>(() => {
+    const byGroup = new Map<string, CourseSummary[]>();
+    for (const course of filteredCourses) {
+      const groupLabel = deriveCourseGroupLabel(course.title);
+      const existing = byGroup.get(groupLabel) ?? [];
+      existing.push(course);
+      byGroup.set(groupLabel, existing);
+    }
+
+    return Array.from(byGroup.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([label, groupCourses]) => ({
+        key: label,
+        label,
+        courses: groupCourses.sort((left, right) => left.title.localeCompare(right.title)),
+      }));
+  }, [filteredCourses]);
+
+  const openPlanner = useCallback(() => {
+    setShowPlanner(true);
+    requestAnimationFrame(() => setPlannerVisible(true));
+  }, []);
+
+  const closePlanner = useCallback(() => {
+    setPlannerVisible(false);
+    window.setTimeout(() => setShowPlanner(false), 190);
+  }, []);
+
+  useEffect(() => {
+    if (!showPlanner) {
+      return;
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closePlanner();
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [closePlanner, showPlanner]);
 
   async function handleCreateSession() {
     if (!selectedCourseId || !topicFocus || !startTime || !endTime || !classroomName) {
@@ -156,6 +257,7 @@ export default function VirtualSessionsPage() {
       setCustomRoomLink("");
       setInviteEmails("");
       setStatusMessage("Session scheduled.");
+      closePlanner();
       await loadData();
     } catch (error: unknown) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to create session.");
@@ -294,28 +396,121 @@ export default function VirtualSessionsPage() {
                 value={selectedCourseId}
                 onChange={(event) => setSelectedCourseId(event.target.value)}
               >
-                {courses.map((course) => (
+                {filteredCourses.map((course) => (
                   <option key={course.id} value={course.id}>
                     {course.title}
                   </option>
                 ))}
               </select>
             </label>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => setShowCourseBrowser((current) => !current)}
+                className="secondary-button px-4 py-2 text-sm"
+              >
+                {showCourseBrowser ? "Hide Course List" : "Browse All Courses"}
+              </button>
+              <button
+                type="button"
+                onClick={openPlanner}
+                className="primary-button inline-flex items-center justify-center gap-2 px-4 py-2 text-sm"
+              >
+                <Plus size={16} />
+                Plan Meeting
+              </button>
+            </div>
           </div>
+
+          {showCourseBrowser && (
+            <section className="mb-8 page-card p-5">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-lg font-bold text-[color:var(--foreground)]">Course Browser</h2>
+                <div className="relative w-full sm:max-w-xs">
+                  <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--ink-subtle)]" />
+                  <input
+                    className="field-shell pl-9"
+                    value={courseQuery}
+                    onChange={(event) => setCourseQuery(event.target.value)}
+                    placeholder="Search courses"
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-72 space-y-4 overflow-y-auto pr-1">
+                {groupedFilteredCourses.map((group) => (
+                  <div key={group.key} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--ink-muted)]">{group.label}</p>
+                      <p className="text-xs text-[color:var(--ink-subtle)]">{group.courses.length}</p>
+                    </div>
+                    {group.courses.map((course) => {
+                      const active = selectedCourseId === course.id;
+                      return (
+                        <button
+                          key={course.id}
+                          type="button"
+                          onClick={() => setSelectedCourseId(course.id)}
+                          className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm ${
+                            active
+                              ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)]"
+                              : "border-[color:var(--border)] bg-white text-[color:var(--foreground)]"
+                          }`}
+                        >
+                          <span>{course.title}</span>
+                          {active && <span className="text-xs font-semibold">Selected</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+                {filteredCourses.length === 0 && (
+                  <p className="text-sm text-[color:var(--ink-muted)]">No courses match your search.</p>
+                )}
+              </div>
+            </section>
+          )}
 
           {loading && <p className="mb-4 text-sm text-[color:var(--ink-muted)]">Loading sessions...</p>}
           {statusMessage && <p className="mb-4 text-sm text-[color:var(--accent-strong)]">{statusMessage}</p>}
 
           <section className="mb-8 asym-grid items-start">
-            <div className="glass-panel-strong rounded-[2rem] p-6 sm:p-8">
-              <div className="mb-6 flex items-center justify-between gap-4">
-                <div>
-                  <p className="section-kicker">Session Builder</p>
-                  <h2 className="mt-2 text-2xl font-bold text-[color:var(--foreground)]">Plan a Jitsi-ready room without leaving the app</h2>
-                </div>
-              </div>
+          <StudyRoomTimer />
+        </section>
 
-              <div className="grid gap-4 md:grid-cols-2">
+          {showPlanner && (
+            <div
+              className={`fixed inset-0 z-50 flex items-center justify-center bg-[rgba(13,27,42,0.45)] p-4 transition-opacity duration-200 ${
+                plannerVisible ? "opacity-100" : "opacity-0"
+              }`}
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  closePlanner();
+                }
+              }}
+            >
+              <div
+                className={`max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[2rem] bg-white p-6 shadow-2xl transition-all duration-200 sm:p-8 ${
+                  plannerVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-[0.985] opacity-0"
+                }`}
+              >
+                <div className="mb-6 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="section-kicker">Session Builder</p>
+                    <h2 className="mt-2 text-2xl font-bold text-[color:var(--foreground)]">Plan a Jitsi-ready room</h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closePlanner}
+                    className="secondary-button inline-flex h-10 w-10 items-center justify-center"
+                    aria-label="Close planner"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2 md:col-span-2">
                 <span className="soft-label">Topic</span>
                 <input
@@ -408,10 +603,9 @@ export default function VirtualSessionsPage() {
                 {creating ? "Scheduling..." : "Create Session"}
               </button>
             </div>
-          </div>
-
-          <StudyRoomTimer />
-        </section>
+              </div>
+            </div>
+          )}
 
           <section className="glass-panel-strong rounded-[2rem] p-6 sm:p-8">
             <div className="mb-6 flex items-center gap-3">
