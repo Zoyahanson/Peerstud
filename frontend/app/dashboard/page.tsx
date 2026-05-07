@@ -109,7 +109,7 @@ export default function Dashboard() {
                     rel="noopener noreferrer"
                     className="ghost-button inline-flex items-center gap-2 px-5 py-3 text-sm hover:-translate-y-0.5"
                   >
-                    Join Meet
+                    Open Room
                     <ArrowRight size={16} />
                   </a>
                 )}

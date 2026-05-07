@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BellRing, CalendarRange, UsersRound } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
-import { authedFetch, getToken } from "../../../lib/api";
+import { API_BASE_URL, authedFetch, getToken } from "../../../lib/api";
 import { buildDefaultVirtualRoomUrl } from "../../../lib/virtual-room";
 
 const StudyRoomTimer = dynamic(() => import("../../../components/study-room-timer"), {
@@ -123,6 +123,12 @@ export default function VirtualSessionsPage() {
     try {
       setCreating(true);
       setStatusMessage("");
+      const fallbackRoomLink = buildDefaultVirtualRoomUrl({
+        courseId: selectedCourseId,
+        classroomName,
+        topicFocus,
+        startTime,
+      });
       const parsedInviteEmails = Array.from(
         new Set(
           inviteEmails
@@ -140,15 +146,7 @@ export default function VirtualSessionsPage() {
           description: description || null,
           start_time: new Date(startTime).toISOString(),
           end_time: new Date(endTime).toISOString(),
-          meet_link:
-            customRoomLink.trim() ||
-            buildDefaultVirtualRoomUrl({
-              courseId: selectedCourseId,
-              classroomName,
-              topicFocus,
-              startTime,
-            }),
-          generate_meet: false,
+          meet_link: customRoomLink.trim() || fallbackRoomLink,
           reminder_minutes_before: Number(reminderMinutesBefore),
           invite_emails: parsedInviteEmails,
         }),
@@ -203,6 +201,41 @@ export default function VirtualSessionsPage() {
       await loadData();
     } catch (error: unknown) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to submit rating.");
+    } finally {
+      setBusySessionId(null);
+    }
+  }
+
+  async function handleDownloadCalendarInvite(sessionId: string) {
+    try {
+      setBusySessionId(sessionId);
+      setStatusMessage("");
+      const token = getToken();
+      if (!token) {
+        throw new Error("Missing auth token");
+      }
+
+      const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/calendar`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to export calendar invite (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `peerstud-session-${sessionId}.ics`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setStatusMessage("Calendar invite downloaded.");
+    } catch (error: unknown) {
+      setStatusMessage(error instanceof Error ? error.message : "Failed to export calendar invite.");
     } finally {
       setBusySessionId(null);
     }
@@ -278,7 +311,7 @@ export default function VirtualSessionsPage() {
               <div className="mb-6 flex items-center justify-between gap-4">
                 <div>
                   <p className="section-kicker">Session Builder</p>
-                  <h2 className="mt-2 text-2xl font-bold text-[color:var(--foreground)]">Plan a room without leaving the app</h2>
+                  <h2 className="mt-2 text-2xl font-bold text-[color:var(--foreground)]">Plan a Jitsi-ready room without leaving the app</h2>
                 </div>
               </div>
 
@@ -343,7 +376,7 @@ export default function VirtualSessionsPage() {
                   className="field-shell min-h-24"
                   value={customRoomLink}
                   onChange={(event) => setCustomRoomLink(event.target.value)}
-                  placeholder="Paste a custom room URL, or leave blank to auto-generate an in-app room"
+                  placeholder="Paste a custom Jitsi room URL, or leave blank to auto-generate the standard room link"
                 />
               </label>
 
@@ -433,12 +466,19 @@ export default function VirtualSessionsPage() {
                                 {busySessionId === session.id ? "Joining..." : "Join Session"}
                               </button>
                             )}
+                            <button
+                              onClick={() => handleDownloadCalendarInvite(session.id)}
+                              disabled={busySessionId === session.id}
+                              className="rounded-full border border-[color:var(--border)] bg-white px-4 py-2 text-sm font-semibold text-[color:var(--foreground)] hover:-translate-y-0.5 disabled:opacity-60"
+                            >
+                              {busySessionId === session.id ? "Preparing..." : "Add To Calendar"}
+                            </button>
                             {session.meet_link && (
                               <button
                                 onClick={() => router.push(`/dashboard/virtual-sessions/room/${session.id}`)}
                                 className="primary-button px-4 py-2 text-center text-sm hover:-translate-y-0.5"
                               >
-                                Open In-App Room
+                                Open Jitsi Room
                               </button>
                             )}
                           </div>

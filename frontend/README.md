@@ -46,9 +46,8 @@ npm run dev
 - `/` home landing page
 - `/login` login screen (demo mode fallback available)
 - `/register` registration screen
-- `/dashboard` sessions + Google Calendar linking
+- `/dashboard` sessions overview and quick room access
 - `/dashboard/study-groups` backend-powered course summaries
 - `/dashboard/resources` backend-powered resources table
-- `/dashboard/settings` persistent user settings
+- `/dashboard/settings` reminders and provider-neutral calendar guidance
 - `/profile` profile details and profile metadata editor
-- `/google-calendar-callback` OAuth popup callback handler
