@@ -50,6 +50,7 @@ export default function Register() {
         options: {
           shouldCreateUser: true,
           data: name.trim() ? { full_name: name.trim() } : undefined,
+          emailRedirectTo: `${window.location.origin}/login`,
         },
       });
       if (error) {
