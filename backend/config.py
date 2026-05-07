@@ -25,6 +25,7 @@ class Settings:
         "CORS_ALLOWED_ORIGINS",
         "http://127.0.0.1:5500,http://localhost:5500,http://localhost:3000",
     )
+    cors_allowed_origin_regex: str = os.getenv("CORS_ALLOWED_ORIGIN_REGEX", r"^https://.*\.vercel\.app$")
 
     @property
     def cors_allowed_origins(self) -> list[str]:
