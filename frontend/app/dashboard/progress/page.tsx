@@ -5,6 +5,7 @@ import { Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../../../components/sidebar";
 import { authedFetch, getToken } from "../../../lib/api";
+import { supabase } from "../../../lib/supabase";
 
 type ProgressPoint = {
   label: string;
@@ -39,6 +40,302 @@ type FriendProgress = {
   study_groups_joined: number;
 };
 
+type DbUser = {
+  id: string;
+  auth_uid: string;
+  email: string;
+  full_name: string | null;
+};
+
+function calculateCurrentStreakDays(activityDates: Date[]): number {
+  if (!activityDates.length) {
+    return 0;
+  }
+
+  const orderedDays = [...new Set(activityDates.map((item) => item.toISOString().slice(0, 10)))].sort().reverse();
+  let streak = 0;
+  let previous: Date | null = null;
+
+  for (const dayText of orderedDays) {
+    const day = new Date(`${dayText}T00:00:00.000Z`);
+    if (!previous) {
+      streak = 1;
+      previous = day;
+      continue;
+    }
+
+    const differenceDays = Math.round((previous.getTime() - day.getTime()) / (1000 * 60 * 60 * 24));
+    if (differenceDays === 1) {
+      streak += 1;
+      previous = day;
+      continue;
+    }
+    break;
+  }
+
+  return streak;
+}
+
+function computeMilestones(hostedSessions: number, joinedSessions: number, ratingsCount: number, credibilityScore: number): string[] {
+  const milestones: string[] = [];
+  if (hostedSessions >= 1) milestones.push("First tutoring session hosted");
+  if (hostedSessions >= 5) milestones.push("Consistent tutor: hosted 5+ sessions");
+  if (joinedSessions >= 10) milestones.push("Collaborative learner: joined 10+ sessions");
+  if (ratingsCount >= 5) milestones.push("Community verified: earned 5+ ratings");
+  if (ratingsCount >= 10 && credibilityScore >= 4.5) milestones.push("Top-rated tutor: 4.5+ score with 10+ ratings");
+  return milestones;
+}
+
+function recentMonthLabels(): string[] {
+  const labels: string[] = [];
+  const now = new Date();
+  for (let offset = 5; offset >= 0; offset -= 1) {
+    const cursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset, 1));
+    labels.push(cursor.toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" }));
+  }
+  return labels;
+}
+
+async function getCurrentDbUser(): Promise<DbUser> {
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData.user) {
+    throw new Error(authError?.message || "Missing Supabase user session.");
+  }
+
+  const authUser = authData.user;
+  const { data: dbUser, error: dbUserError } = await supabase
+    .from("users")
+    .select("id, auth_uid, email, full_name")
+    .eq("auth_uid", authUser.id)
+    .maybeSingle<DbUser>();
+
+  if (dbUserError) {
+    throw new Error(dbUserError.message || "Failed to load user record.");
+  }
+  if (dbUser) {
+    return dbUser;
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("users")
+    .insert({
+      auth_uid: authUser.id,
+      email: (authUser.email || "").toLowerCase(),
+      full_name: (authUser.user_metadata?.full_name as string | undefined) || null,
+    })
+    .select("id, auth_uid, email, full_name")
+    .single<DbUser>();
+
+  if (insertError || !inserted) {
+    throw new Error(insertError?.message || "Failed to create user record.");
+  }
+  return inserted;
+}
+
+async function loadProgressViaSupabase(): Promise<{ analytics: UserAnalytics; friendsProgress: FriendProgress[] }> {
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const currentUser = await getCurrentDbUser();
+  const [
+    hostedResult,
+    joinedResult,
+    groupsResult,
+    resourcesResult,
+    profileResult,
+  ] = await Promise.all([
+    supabase.from("sessions").select("id, topic_focus, classroom_name, start_time, end_time, created_at").eq("host_user_id", currentUser.id),
+    supabase.from("session_participants").select("session_id, joined_at").eq("user_id", currentUser.id),
+    supabase.from("study_group_members").select("joined_at").eq("user_id", currentUser.id),
+    supabase.from("resources").select("id").eq("uploaded_by_user_id", currentUser.id),
+    supabase.from("user_profiles").select("credibility_score, ratings_count").eq("user_id", currentUser.id).maybeSingle(),
+  ]);
+
+  if (hostedResult.error || joinedResult.error || groupsResult.error || resourcesResult.error || profileResult.error) {
+    throw new Error(
+      hostedResult.error?.message
+      || joinedResult.error?.message
+      || groupsResult.error?.message
+      || resourcesResult.error?.message
+      || profileResult.error?.message
+      || "Failed to load progress data.",
+    );
+  }
+
+  const hostedRows = hostedResult.data ?? [];
+  const joinedRows = joinedResult.data ?? [];
+  const joinedGroupRows = groupsResult.data ?? [];
+  const resourcesShared = (resourcesResult.data ?? []).length;
+  const ratingsCount = Number(profileResult.data?.ratings_count ?? 0);
+  const credibilityScore = Number(profileResult.data?.credibility_score ?? 0);
+
+  const joinedSessionIds = joinedRows.map((row) => String((row as { session_id: string }).session_id));
+  const joinedSessionsLookup = joinedSessionIds.length
+    ? await supabase
+      .from("sessions")
+      .select("id, topic_focus, classroom_name, start_time, end_time")
+      .in("id", joinedSessionIds)
+    : { data: [], error: null };
+
+  if (joinedSessionsLookup.error) {
+    throw new Error(joinedSessionsLookup.error.message || "Failed to load joined session details.");
+  }
+
+  const joinedSessionMap = new Map<string, { topic_focus: string; classroom_name: string; start_time: string; end_time: string }>();
+  for (const session of joinedSessionsLookup.data ?? []) {
+    const row = session as { id: string; topic_focus: string; classroom_name: string; start_time: string; end_time: string };
+    joinedSessionMap.set(String(row.id), row);
+  }
+
+  const labels = recentMonthLabels();
+  const labelCounts: Record<string, { hosted: number; joined: number }> = {};
+  for (const label of labels) {
+    labelCounts[label] = { hosted: 0, joined: 0 };
+  }
+
+  for (const hosted of hostedRows) {
+    const label = new Date(String((hosted as { start_time: string }).start_time)).toLocaleString("en-US", {
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    if (label in labelCounts) labelCounts[label].hosted += 1;
+  }
+
+  for (const joined of joinedRows) {
+    const label = new Date(String((joined as { joined_at: string }).joined_at)).toLocaleString("en-US", {
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    if (label in labelCounts) labelCounts[label].joined += 1;
+  }
+
+  const activityDates: Date[] = [
+    ...hostedRows.map((row) => new Date(String((row as { created_at: string }).created_at))),
+    ...joinedRows.map((row) => new Date(String((row as { joined_at: string }).joined_at))),
+    ...joinedGroupRows.map((row) => new Date(String((row as { joined_at: string }).joined_at))),
+  ];
+
+  const hostedHistory = [...hostedRows]
+    .sort((left, right) => new Date(String((right as { start_time: string }).start_time)).getTime() - new Date(String((left as { start_time: string }).start_time)).getTime())
+    .slice(0, 6)
+    .map((row) => ({
+      role: "host",
+      topic_focus: String((row as { topic_focus: string }).topic_focus),
+      classroom_name: String((row as { classroom_name: string }).classroom_name),
+      start_time: String((row as { start_time: string }).start_time),
+      end_time: String((row as { end_time: string }).end_time),
+    }));
+
+  const participantHistory = joinedRows
+    .map((row) => {
+      const sessionId = String((row as { session_id: string }).session_id);
+      const session = joinedSessionMap.get(sessionId);
+      if (!session) return null;
+      return {
+        role: "participant",
+        topic_focus: session.topic_focus,
+        classroom_name: session.classroom_name,
+        start_time: session.start_time,
+        end_time: session.end_time,
+      };
+    })
+    .filter((item): item is { role: string; topic_focus: string; classroom_name: string; start_time: string; end_time: string } => item !== null)
+    .sort((left, right) => new Date(right.start_time).getTime() - new Date(left.start_time).getTime())
+    .slice(0, 6);
+
+  const friendsResult = await supabase.from("friendships").select("friend_user_id").eq("user_id", currentUser.id);
+  if (friendsResult.error) {
+    throw new Error(friendsResult.error.message || "Failed to load friends.");
+  }
+
+  const friendIds = Array.from(new Set((friendsResult.data ?? []).map((row) => String((row as { friend_user_id: string }).friend_user_id))));
+  let friendsProgress: FriendProgress[] = [];
+
+  if (friendIds.length) {
+    const [friendUsersResult, friendJoinedResult, friendResourcesResult, friendGroupsResult, friendHostedResult] = await Promise.all([
+      supabase.from("users").select("id, full_name, email").in("id", friendIds),
+      supabase.from("session_participants").select("user_id, joined_at").in("user_id", friendIds),
+      supabase.from("resources").select("uploaded_by_user_id").in("uploaded_by_user_id", friendIds),
+      supabase.from("study_group_members").select("user_id, joined_at").in("user_id", friendIds),
+      supabase.from("sessions").select("host_user_id, created_at").in("host_user_id", friendIds),
+    ]);
+
+    if (friendUsersResult.error || friendJoinedResult.error || friendResourcesResult.error || friendGroupsResult.error || friendHostedResult.error) {
+      throw new Error(
+        friendUsersResult.error?.message
+        || friendJoinedResult.error?.message
+        || friendResourcesResult.error?.message
+        || friendGroupsResult.error?.message
+        || friendHostedResult.error?.message
+        || "Failed to load friend analytics.",
+      );
+    }
+
+    const joinedByUser = new Map<string, number>();
+    const resourcesByUser = new Map<string, number>();
+    const groupsByUser = new Map<string, number>();
+    const activityByUser = new Map<string, Date[]>();
+
+    for (const row of friendJoinedResult.data ?? []) {
+      const userId = String((row as { user_id: string }).user_id);
+      joinedByUser.set(userId, (joinedByUser.get(userId) ?? 0) + 1);
+      activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), new Date(String((row as { joined_at: string }).joined_at))]);
+    }
+    for (const row of friendResourcesResult.data ?? []) {
+      const userId = String((row as { uploaded_by_user_id: string }).uploaded_by_user_id);
+      resourcesByUser.set(userId, (resourcesByUser.get(userId) ?? 0) + 1);
+    }
+    for (const row of friendGroupsResult.data ?? []) {
+      const userId = String((row as { user_id: string }).user_id);
+      groupsByUser.set(userId, (groupsByUser.get(userId) ?? 0) + 1);
+      activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), new Date(String((row as { joined_at: string }).joined_at))]);
+    }
+    for (const row of friendHostedResult.data ?? []) {
+      const userId = String((row as { host_user_id: string }).host_user_id);
+      activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), new Date(String((row as { created_at: string }).created_at))]);
+    }
+
+    friendsProgress = (friendUsersResult.data ?? []).map((friend) => {
+      const friendRow = friend as { id: string; full_name: string | null; email: string };
+      const userId = String(friendRow.id);
+      return {
+        user_id: userId,
+        full_name: friendRow.full_name,
+        email: friendRow.email,
+        joined_sessions: joinedByUser.get(userId) ?? 0,
+        resources_shared: resourcesByUser.get(userId) ?? 0,
+        current_streak_days: calculateCurrentStreakDays(activityByUser.get(userId) ?? []),
+        study_groups_joined: groupsByUser.get(userId) ?? 0,
+      };
+    });
+  }
+
+  return {
+    analytics: {
+      hosted_sessions: hostedRows.length,
+      joined_sessions: joinedRows.length,
+      study_groups_joined: joinedGroupRows.length,
+      resources_shared: resourcesShared,
+      current_streak_days: calculateCurrentStreakDays(activityDates),
+      milestones: computeMilestones(hostedRows.length, joinedRows.length, ratingsCount, credibilityScore),
+      progress_points: labels.map((label) => ({
+        label,
+        hosted_sessions: labelCounts[label].hosted,
+        joined_sessions: labelCounts[label].joined,
+      })),
+      session_history: [...hostedHistory, ...participantHistory],
+    },
+    friendsProgress,
+  };
+}
+
 export default function ProgressPage() {
   const router = useRouter();
   const [analytics, setAnalytics] = useState<UserAnalytics | null>(null);
@@ -53,18 +350,28 @@ export default function ProgressPage() {
       return;
     }
 
-    Promise.all([
-      authedFetch<UserAnalytics>("/users/me/analytics"),
-      authedFetch<FriendProgress[]>("/users/me/friends/analytics").catch(() => [] as FriendProgress[]),
-    ])
-      .then(([analyticsRes, friendsRes]) => {
+    loadProgressViaSupabase()
+      .then(({ analytics: analyticsRes, friendsProgress: friendsRes }) => {
         setAnalytics(analyticsRes);
         setFriendsProgress(friendsRes);
       })
-      .catch((error: unknown) => {
-        setStatusMessage(error instanceof Error ? error.message : "Failed to load analytics.");
+      .catch(() => {
+        Promise.all([
+          authedFetch<UserAnalytics>("/users/me/analytics"),
+          authedFetch<FriendProgress[]>("/users/me/friends/analytics").catch(() => [] as FriendProgress[]),
+        ])
+          .then(([analyticsRes, friendsRes]) => {
+            setAnalytics(analyticsRes);
+            setFriendsProgress(friendsRes);
+          })
+          .catch((error: unknown) => {
+            setStatusMessage(error instanceof Error ? error.message : "Failed to load analytics.");
+          })
+          .finally(() => setLoading(false));
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+      });
   }, [router]);
 
   const maxValue = useMemo(() => {
