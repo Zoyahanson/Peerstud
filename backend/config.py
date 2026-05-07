@@ -21,13 +21,14 @@ class Settings:
     database_password: str = os.getenv("DATABASE_PASSWORD", "peerstud")
     supabase_jwt_audience: str = os.getenv("SUPABASE_JWT_AUDIENCE", "authenticated")
     school_email_domains: str = os.getenv("SCHOOL_EMAIL_DOMAINS", "mymona.uwi.edu,uwi.edu.jm")
-    google_calendar_id: str = os.getenv("GOOGLE_CALENDAR_ID", "primary")
-    google_oauth_client_id: str | None = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
-    google_oauth_client_secret: str | None = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
-    google_oauth_redirect_uri: str = os.getenv(
-        "GOOGLE_OAUTH_REDIRECT_URI",
-        "http://localhost:3000/google-calendar-callback",
+    cors_allowed_origins_raw: str = os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://127.0.0.1:5500,http://localhost:5500,http://localhost:3000",
     )
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins_raw.split(",") if origin.strip()]
 
     @property
     def database_url(self) -> str:

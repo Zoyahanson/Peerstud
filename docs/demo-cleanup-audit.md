@@ -40,13 +40,13 @@ This file marks code paths, scripts, and folders that can be reduced for a light
   - Add `DEMO_SIMPLE_MATCHING=true` to bypass vector distance queries and return random or recent-user matches.
 - Benefit: lower DB/index overhead while preserving endpoint contract.
 
-2. Google Calendar/Meet integrations
+2. Calendar export flow
 - Files:
-  - `backend/services/google_calendar_oauth.py`
-  - `backend/services/google_meet.py`
-- Why keep now: avoids breaking settings/session flows.
+  - `backend/api/sessions.py`
+  - `frontend/app/dashboard/virtual-sessions/page.tsx`
+- Why keep now: sessions can be exported as `.ics` files without locking the product to a provider.
 - Demo simplification option:
-  - force mock mode with `GOOGLE_MEET_MOCK_MODE=true`.
+  - keep only the `.ics` export button and omit any external calendar copy elsewhere.
 
 3. User settings endpoints
 - Files:

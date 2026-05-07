@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import StringIO
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, selectinload
 
@@ -94,6 +95,39 @@ def _update_tutor_credibility(db: Session, tutor_user_id: str) -> None:
     db.add(profile)
 
 
+def _to_ics_timestamp(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _escape_ics_text(value: str | None) -> str:
+    return (value or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+
+def _build_session_calendar_ics(item: StudySession) -> str:
+    output = StringIO()
+    output.write("BEGIN:VCALENDAR\r\n")
+    output.write("VERSION:2.0\r\n")
+    output.write("PRODID:-//PeerStud//Session Calendar//EN\r\n")
+    output.write("CALSCALE:GREGORIAN\r\n")
+    output.write("METHOD:PUBLISH\r\n")
+    output.write("BEGIN:VEVENT\r\n")
+    output.write(f"UID:session-{item.id}@peerstud\r\n")
+    output.write(f"DTSTAMP:{_to_ics_timestamp(datetime.now(timezone.utc))}\r\n")
+    output.write(f"DTSTART:{_to_ics_timestamp(item.start_time)}\r\n")
+    output.write(f"DTEND:{_to_ics_timestamp(item.end_time)}\r\n")
+    output.write(f"SUMMARY:{_escape_ics_text(item.topic_focus)}\r\n")
+    output.write(f"LOCATION:{_escape_ics_text(item.classroom_name)}\r\n")
+    if item.description:
+        output.write(f"DESCRIPTION:{_escape_ics_text(item.description)}\r\n")
+    if item.meet_link:
+        output.write(f"URL:{item.meet_link}\r\n")
+    output.write("END:VEVENT\r\n")
+    output.write("END:VCALENDAR\r\n")
+    return output.getvalue()
+
+
 @router.get("", response_model=list[SessionResponse])
 def list_sessions(
     course_id: str | None = None,
@@ -146,12 +180,14 @@ def create_session(
             detail="Classroom already booked for that time range",
         )
 
-    meet_link = payload.meet_link
+    meet_link = payload.meet_link.strip() if payload.meet_link and payload.meet_link.strip() else None
     calendar_event_id = None
     user_settings = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
     reminder_minutes_before = payload.reminder_minutes_before
     if reminder_minutes_before is None and user_settings:
         reminder_minutes_before = user_settings.reminder_minutes_before
+
+    invite_emails = {str(email).strip().lower() for email in payload.invite_emails if str(email).strip()}
 
     study_session = StudySession(
         course_id=payload.course_id,
@@ -168,7 +204,6 @@ def create_session(
     db.flush()
     db.add(SessionParticipant(session_id=study_session.id, user_id=current_user.id, status="confirmed"))
 
-    invite_emails = {str(email).strip().lower() for email in payload.invite_emails if str(email).strip()}
     if invite_emails:
         invited_users = (
             db.query(User)
@@ -242,6 +277,33 @@ def join_session(
         .first()
     )
     return _serialize_session(refreshed, str(current_user.id))
+
+
+@router.get("/{session_id}/calendar")
+def download_session_calendar_event(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    study_session = (
+        db.query(StudySession)
+        .options(selectinload(StudySession.participants))
+        .filter(StudySession.id == session_id)
+        .first()
+    )
+    if not study_session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    is_participant = any(participant.user_id == current_user.id for participant in study_session.participants)
+    if study_session.host_user_id != current_user.id and not is_participant:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to export this session")
+
+    slug = "".join(char.lower() if char.isalnum() else "-" for char in study_session.topic_focus).strip("-") or "session"
+    return Response(
+        content=_build_session_calendar_ics(study_session),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="peerstud-{slug}.ics"'},
+    )
 
 
 @router.post("/{session_id}/ratings", response_model=SessionRatingResponse)

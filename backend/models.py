@@ -21,10 +21,6 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     profile: Mapped["UserProfile"] = relationship(back_populates="user", uselist=False)
-    google_calendar_connection: Mapped["GoogleCalendarConnection | None"] = relationship(
-        back_populates="user",
-        uselist=False,
-    )
     settings: Mapped["UserSettings | None"] = relationship(
         back_populates="user",
         uselist=False,
@@ -300,32 +296,6 @@ class Resource(Base):
 
     course: Mapped[Course] = relationship(back_populates="resources")
 
-
-class GoogleCalendarConnection(Base):
-    __tablename__ = "google_calendar_connections"
-
-    id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        unique=True,
-        nullable=False,
-        index=True,
-    )
-    google_email: Mapped[str] = mapped_column(String(255), nullable=False)
-    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
-    access_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
-
-    user: Mapped[User] = relationship(back_populates="google_calendar_connection")
-
-
 class UserSettings(Base):
     __tablename__ = "user_settings"
 
@@ -338,7 +308,6 @@ class UserSettings(Base):
         index=True,
     )
     email_alerts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    calendar_auto_meet: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     adaptive_layout: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     desktop_reminders: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     reminder_minutes_before: Mapped[int] = mapped_column(nullable=False, default=30)

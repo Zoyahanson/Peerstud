@@ -127,7 +127,6 @@ CREATE TABLE IF NOT EXISTS user_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     email_alerts BOOLEAN NOT NULL DEFAULT TRUE,
-    calendar_auto_meet BOOLEAN NOT NULL DEFAULT TRUE,
     adaptive_layout BOOLEAN NOT NULL DEFAULT TRUE,
     desktop_reminders BOOLEAN NOT NULL DEFAULT TRUE,
     reminder_minutes_before INTEGER NOT NULL DEFAULT 30,

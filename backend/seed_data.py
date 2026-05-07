@@ -75,7 +75,6 @@ class SeedUser:
     offer_text: str
     need_text: str
     email_alerts: bool
-    calendar_auto_meet: bool
     adaptive_layout: bool
     desktop_reminders: bool
     reminder_minutes_before: int
@@ -102,7 +101,6 @@ SEED_USERS = [
         offer_text="Can help with Python, SQL, and architecture planning.",
         need_text="Needs help tightening statistics fundamentals.",
         email_alerts=True,
-        calendar_auto_meet=True,
         adaptive_layout=True,
         desktop_reminders=True,
         reminder_minutes_before=20,
@@ -127,7 +125,6 @@ SEED_USERS = [
         offer_text="Can coach networking and Linux setup work.",
         need_text="Wants stronger SQL query design and database modeling.",
         email_alerts=True,
-        calendar_auto_meet=False,
         adaptive_layout=True,
         desktop_reminders=False,
         reminder_minutes_before=45,
@@ -152,7 +149,6 @@ SEED_USERS = [
         offer_text="Can support statistics, probability, and exam prep.",
         need_text="Needs help with frontend implementation details.",
         email_alerts=False,
-        calendar_auto_meet=True,
         adaptive_layout=False,
         desktop_reminders=True,
         reminder_minutes_before=30,
@@ -177,7 +173,6 @@ SEED_USERS = [
         offer_text="Can organize notes and keep groups on schedule.",
         need_text="Needs support in algorithms, databases, and calculus.",
         email_alerts=True,
-        calendar_auto_meet=False,
         adaptive_layout=True,
         desktop_reminders=True,
         reminder_minutes_before=15,
@@ -338,7 +333,6 @@ def _create_users(db: Session) -> dict[str, User]:
         settings = UserSettings(
             user_id=user.id,
             email_alerts=seed_user.email_alerts,
-            calendar_auto_meet=seed_user.calendar_auto_meet,
             adaptive_layout=seed_user.adaptive_layout,
             desktop_reminders=seed_user.desktop_reminders,
             reminder_minutes_before=seed_user.reminder_minutes_before,
@@ -613,7 +607,6 @@ def _build_report(db: Session) -> dict[str, object]:
                 "has_offer_vector": bool(profile and profile.offer_vector is not None),
                 "has_need_vector": bool(profile and profile.need_vector is not None),
                 "email_alerts": settings.email_alerts if settings else None,
-                "calendar_auto_meet": settings.calendar_auto_meet if settings else None,
                 "adaptive_layout": settings.adaptive_layout if settings else None,
                 "desktop_reminders": settings.desktop_reminders if settings else None,
                 "reminder_minutes_before": settings.reminder_minutes_before if settings else None,

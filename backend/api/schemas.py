@@ -86,20 +86,6 @@ class UserProfileDetailResponse(BaseModel):
     has_need_vector: bool
 
 
-class GoogleCalendarLinkStartResponse(BaseModel):
-    authorization_url: str
-
-
-class GoogleCalendarLinkCompleteRequest(BaseModel):
-    code: str
-    state: str
-
-
-class GoogleCalendarStatusResponse(BaseModel):
-    linked: bool
-    google_email: EmailStr | None = None
-
-
 class SchoolEmailPolicyResponse(BaseModel):
     allowed_domains: list[str]
     requires_verified_email: bool = True
@@ -117,7 +103,6 @@ class UserProgressResponse(BaseModel):
 
 class UserSettingsResponse(BaseModel):
     email_alerts: bool
-    calendar_auto_meet: bool
     adaptive_layout: bool
     desktop_reminders: bool
     reminder_minutes_before: int
@@ -125,7 +110,6 @@ class UserSettingsResponse(BaseModel):
 
 class UserSettingsUpdate(BaseModel):
     email_alerts: bool
-    calendar_auto_meet: bool
     adaptive_layout: bool
     desktop_reminders: bool
     reminder_minutes_before: int = Field(ge=5, le=1440)
@@ -139,7 +123,6 @@ class SessionCreate(BaseModel):
     start_time: datetime
     end_time: datetime
     meet_link: str | None = None
-    generate_meet: bool = False
     reminder_minutes_before: int | None = Field(default=None, ge=5, le=1440)
     invite_emails: list[EmailStr] = Field(default_factory=list)
 

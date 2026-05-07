@@ -107,15 +107,9 @@ Install the Supabase agent skills for this repo with:
 	npx skills add supabase/agent-skills --all
 	```
 
-## Google Meet Configuration
+## Session Room And Calendar
 
-Google Meet links are created using Google Calendar API conference data.
-
-Set environment variables:
-
-- `GOOGLE_SERVICE_ACCOUNT_FILE` - absolute path to service account JSON
-- `GOOGLE_CALENDAR_ID` - calendar ID (optional, defaults to `primary`)
-- `GOOGLE_MEET_MOCK_MODE` - set to `true` to return mock links without Google credentials
+Sessions use Jitsi-style room links. Calendar integration is provider-neutral via downloadable `.ics` invites.
 
 ## Current API Endpoints
 
@@ -125,16 +119,13 @@ Set environment variables:
 - `PUT /users/me/profile`
 - `GET /users/me/settings`
 - `PUT /users/me/settings`
-- `GET /users/me/google-calendar/status`
-- `POST /users/me/google-calendar/link/start`
-- `POST /users/me/google-calendar/link/complete`
-- `DELETE /users/me/google-calendar/link`
 - `GET /users/{user_id}`
 - `GET /matches`
 - `GET /courses`
 - `GET /resources`
 - `GET /sessions`
 - `POST /sessions`
+- `GET /sessions/{session_id}/calendar`
 
 ## pgvector Verification
 
@@ -189,7 +180,6 @@ Use this checklist for the recommended stack:
 	- `SUPABASE_URL`
 	- `SUPABASE_JWT_AUDIENCE`
 	- `SCHOOL_EMAIL_DOMAINS`
-	- Google calendar vars if Meet integration is enabled
 - Configure CORS to allow the Vercel frontend domain.
 - Run a health check against `/` and auth check against `/users/me` using a valid Supabase access token.
 
@@ -214,3 +204,27 @@ Use this checklist for the recommended stack:
 - Create or update profile and save vector fields.
 - Run tutor search and matching endpoints.
 - Create a session and verify participant and leaderboard flows.
+
+## Deploy Backend to Render
+
+This repository includes a Render Blueprint file at `render.yaml` for the FastAPI backend.
+
+1. Push your latest code to GitHub.
+2. In Render, click `New +` -> `Blueprint` and connect this repository.
+3. Render detects `render.yaml` and creates the `peerstud-backend` web service.
+4. In Render service settings, set secrets (values are intentionally not committed):
+	- `DATABASE_URL` (Supabase Postgres connection string)
+	- `SUPABASE_URL`
+	- `SUPABASE_JWT_AUDIENCE` (keep `authenticated` unless your Supabase JWT audience differs)
+	- `SCHOOL_EMAIL_DOMAINS` (for example `mymona.uwi.edu,uwi.edu.jm`)
+	- `CORS_ALLOWED_ORIGINS` (for example `https://your-frontend.vercel.app`)
+5. Deploy and verify:
+	- `GET /` returns `PeerStud Backend Running`
+	- `GET /docs` loads Swagger UI
+	- Protected routes (for example `/users/me`) work with a valid Supabase access token
+
+Notes:
+- Start command is `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`.
+- Build command is `pip install -r backend/requirements.txt`.
+- CORS now reads from `CORS_ALLOWED_ORIGINS` (comma-separated values).
+- File uploads are written to the local container filesystem, so uploaded files are not persistent across Render deploys or restarts.
