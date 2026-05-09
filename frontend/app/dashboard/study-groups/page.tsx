@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, Hash, MessageCircle, Plus, Users, X } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
-import { authedFetch, getToken } from "../../../lib/api";
+import { authedFetch, hasAuthToken } from "../../../lib/api";
 
 type CourseSummary = {
   id: string;
   title: string;
   description: string | null;
-  instructor_id: string;
+  student_count: number;
+  supplementary_tutor_count: number;
   sessions_count: number;
   resources_count: number;
 };
@@ -67,8 +68,11 @@ function toDateTimeLocal(value: string | null): string {
 
 export default function StudyGroupsPage({ onSwitchToChat }: { onSwitchToChat?: () => void } = {}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedCourseId = searchParams.get("course_id") ?? "";
+  const requestedGroupId = searchParams.get("group_id") ?? "";
   const [courses, setCourses] = useState<CourseSummary[]>([]);
-  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedCourseId, setSelectedCourseId] = useState(requestedCourseId);
   const [groups, setGroups] = useState<StudyGroup[]>([]);
   const [recommendation, setRecommendation] = useState<StudyGroupRecommendation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,28 +84,55 @@ export default function StudyGroupsPage({ onSwitchToChat }: { onSwitchToChat?: (
   const [scheduledStart, setScheduledStart] = useState("");
   const [scheduledEnd, setScheduledEnd] = useState("");
   const [targetSize, setTargetSize] = useState("6");
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(requestedGroupId || null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
+    let cancelled = false;
+
+    async function loadCourses() {
+      const authenticated = await hasAuthToken();
+      if (cancelled) {
+        return;
+      }
+      if (!authenticated) {
+        router.push("/login");
+        return;
+      }
+
+      try {
+        const response = await authedFetch<CourseSummary[]>("/courses");
+        if (cancelled) {
+          return;
+        }
+        setCourses(response);
+        const initialCourseId =
+          requestedCourseId && response.some((course) => course.id === requestedCourseId)
+            ? requestedCourseId
+            : response[0]?.id ?? "";
+        setSelectedCourseId(initialCourseId);
+        if (requestedGroupId) {
+          setSelectedGroupId(requestedGroupId);
+        }
+        setError("");
+      } catch (fetchError: unknown) {
+        if (!cancelled) {
+          setError(fetchError instanceof Error ? fetchError.message : "Failed to load study groups.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
-    authedFetch<CourseSummary[]>("/courses")
-      .then((response) => {
-        setCourses(response);
-        setSelectedCourseId(response[0]?.id ?? "");
-        setError("");
-      })
-      .catch((fetchError: unknown) => {
-        setError(fetchError instanceof Error ? fetchError.message : "Failed to load study groups.");
-      })
-      .finally(() => setLoading(false));
+    void loadCourses();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   useEffect(() => {
@@ -119,6 +150,13 @@ export default function StudyGroupsPage({ onSwitchToChat }: { onSwitchToChat?: (
       .then(([groupResponse, recommendationResponse]) => {
         setGroups(groupResponse);
         setRecommendation(recommendationResponse);
+        if (requestedGroupId) {
+          const targetGroup = groupResponse.find((group) => group.id === requestedGroupId);
+          if (targetGroup) {
+            setSelectedGroupId(targetGroup.id);
+            setShowCreateForm(false);
+          }
+        }
         if (recommendationResponse.recommendation_type === "create_suggested") {
           setTopicFocus(recommendationResponse.suggested_topic_focus ?? "");
           setScheduledStart(toDateTimeLocal(recommendationResponse.suggested_start));
@@ -130,7 +168,7 @@ export default function StudyGroupsPage({ onSwitchToChat }: { onSwitchToChat?: (
         setError(fetchError instanceof Error ? fetchError.message : "Failed to load study groups.");
       })
       .finally(() => setGroupsLoading(false));
-  }, [selectedCourseId]);
+  }, [requestedGroupId, selectedCourseId]);
 
   async function refreshSelectedCourse() {
     if (!selectedCourseId) {

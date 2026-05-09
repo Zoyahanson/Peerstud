@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "../components/navbar";
 import ReminderPulse from "../components/reminder-pulse";
+import AppConnectionGate from "../components/app-connection-gate";
 
 
 const geistSans = Geist({
@@ -28,10 +29,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <a href="#main-content" className="skip-link">Skip to content</a>
-        <Navbar />
-        <ReminderPulse />
-        <div id="main-content">{children}</div>
+        <AppConnectionGate>
+          <a href="#main-content" className="skip-link">Skip to content</a>
+          <Navbar />
+          <ReminderPulse />
+          <div id="main-content">{children}</div>
+        </AppConnectionGate>
       </body>
 
     </html>

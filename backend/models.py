@@ -25,7 +25,15 @@ class User(Base):
         back_populates="user",
         uselist=False,
     )
-    courses_taught: Mapped[list["Course"]] = relationship(back_populates="instructor")
+    course_memberships: Mapped[list["UserCourse"]] = relationship(
+        back_populates="user",
+        foreign_keys="UserCourse.user_id",
+        cascade="all, delete-orphan",
+    )
+    supplementary_tutor_assignments: Mapped[list["UserCourse"]] = relationship(
+        back_populates="supplementary_tutor",
+        foreign_keys="UserCourse.supplementary_tutor_user_id",
+    )
     hosted_sessions: Mapped[list["Session"]] = relationship(back_populates="host")
     joined_sessions: Mapped[list["SessionParticipant"]] = relationship(back_populates="user")
     authored_session_ratings: Mapped[list["SessionRating"]] = relationship(
@@ -102,18 +110,65 @@ class Course(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    instructor_id: Mapped[str] = mapped_column(
+    # Deprecated ownership field retained for backward compatibility with older databases.
+    instructor_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    instructor: Mapped[User] = relationship(back_populates="courses_taught")
+    enrollments: Mapped[list["UserCourse"]] = relationship(back_populates="course")
     sessions: Mapped[list["Session"]] = relationship(back_populates="course")
     resources: Mapped[list["Resource"]] = relationship(back_populates="course")
     study_groups: Mapped[list["StudyGroup"]] = relationship(back_populates="course")
+
+
+class UserCourse(Base):
+    __tablename__ = "user_courses"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    course_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("courses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    proficiency: Mapped[str] = mapped_column(String(20), nullable=False, default="average")
+    specific_topics: Mapped[str | None] = mapped_column(Text, nullable=True)
+    strong_topics: Mapped[list[str]] = mapped_column(
+        ARRAY(String(120)),
+        nullable=False,
+        default=list,
+        server_default=text("'{}'"),
+    )
+    need_topics: Mapped[list[str]] = mapped_column(
+        ARRAY(String(120)),
+        nullable=False,
+        default=list,
+        server_default=text("'{}'"),
+    )
+    supplementary_tutor_user_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="course_memberships", foreign_keys=[user_id])
+    course: Mapped[Course] = relationship(back_populates="enrollments")
+    supplementary_tutor: Mapped[User | None] = relationship(
+        back_populates="supplementary_tutor_assignments",
+        foreign_keys=[supplementary_tutor_user_id],
+    )
 
 
 class Session(Base):
@@ -311,6 +366,20 @@ class UserSettings(Base):
     adaptive_layout: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     desktop_reminders: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     reminder_minutes_before: Mapped[int] = mapped_column(nullable=False, default=30)
+    weekly_progress_digest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    focus_mode_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    show_online_status: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    availability_slots: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)),
+        nullable=False,
+        default=list,
+        server_default=text("'{}'"),
+    )
+    matching_preference: Mapped[str] = mapped_column(String(30), nullable=False, default="peers_only")
+    study_style_preference: Mapped[str] = mapped_column(String(20), nullable=False, default="both")
+    preferred_session_length_minutes: Mapped[int] = mapped_column(nullable=False, default=60)
+    include_graduate_tutors: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

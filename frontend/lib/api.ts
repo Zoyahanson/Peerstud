@@ -2,6 +2,11 @@ import { supabase } from "./supabase";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+function getBackendBaseUrl(): string {
+  // Keep one canonical absolute backend URL for browser and server calls.
+  return API_BASE_URL.replace(/\/$/, "");
+}
+
 // Module-level token cache — avoids a localStorage read on every single request.
 // Cleared when the "auth-changed" event fires (login/logout).
 let _cachedToken: string | null = null;
@@ -42,6 +47,28 @@ async function getTokenForRequest(): Promise<string | null> {
   return accessToken;
 }
 
+export async function hasAuthToken(): Promise<boolean> {
+  return Boolean(await getTokenForRequest());
+}
+
+async function parseJsonBody<T>(response: Response): Promise<T> {
+  if (response.status === 204 || response.status === 205) {
+    return null as T;
+  }
+
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.includes("application/json")) {
+    return null as T;
+  }
+
+  const text = await response.text();
+  if (!text.trim()) {
+    return null as T;
+  }
+
+  return JSON.parse(text) as T;
+}
+
 export async function authedFetch<T>(
   path: string,
   init: RequestInit = {},
@@ -57,7 +84,7 @@ export async function authedFetch<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getBackendBaseUrl()}${path}`, {
     ...init,
     headers,
   });
@@ -66,7 +93,7 @@ export async function authedFetch<T>(
     // Only parse body on error path — avoids double-parsing on the hot path
     let detail = `Request failed (${response.status})`;
     try {
-      const err = await response.json();
+      const err = await parseJsonBody<{ detail?: string; message?: string }>(response);
       detail = err?.detail ?? err?.message ?? detail;
     } catch {
       // ignore parse errors on error responses
@@ -74,9 +101,7 @@ export async function authedFetch<T>(
     throw new Error(String(detail));
   }
 
-  const contentLength = response.headers.get("content-length");
-  if (contentLength === "0") return null as T;
-  return response.json() as Promise<T>;
+  return parseJsonBody<T>(response);
 }
 
 export async function publicFetch<T>(
@@ -88,7 +113,7 @@ export async function publicFetch<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getBackendBaseUrl()}${path}`, {
     ...init,
     headers,
   });
@@ -96,7 +121,7 @@ export async function publicFetch<T>(
   if (!response.ok) {
     let detail = `Request failed (${response.status})`;
     try {
-      const err = await response.json();
+      const err = await parseJsonBody<{ detail?: string; message?: string }>(response);
       detail = err?.detail ?? err?.message ?? detail;
     } catch {
       // ignore
@@ -104,8 +129,6 @@ export async function publicFetch<T>(
     throw new Error(String(detail));
   }
 
-  const contentLength = response.headers.get("content-length");
-  if (contentLength === "0") return null as T;
-  return response.json() as Promise<T>;
+  return parseJsonBody<T>(response);
 }
 

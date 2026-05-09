@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatAllowedDomains, isAllowedSchoolEmail, loadSchoolEmailPolicy } from "../../lib/auth-policy";
+import { API_BASE_URL } from "../../lib/api";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
 export default function Login() {
@@ -50,7 +51,20 @@ export default function Login() {
         setError("Sign in did not return an active session.");
         return;
       }
-      router.push("/dashboard");
+
+      const settingsResponse = await fetch(`${API_BASE_URL}/users/me/settings`, {
+        headers: {
+          Authorization: `Bearer ${data.session.access_token}`,
+        },
+      });
+
+      if (settingsResponse.ok) {
+        const settings = (await settingsResponse.json()) as { onboarding_completed?: boolean };
+        router.push(settings.onboarding_completed ? "/dashboard" : "/onboarding");
+        return;
+      }
+
+      router.push("/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed.");
     } finally {

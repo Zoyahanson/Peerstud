@@ -2,9 +2,9 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronUp, Search, Sparkles, Star } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageCircle, Search, Sparkles, Star } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
-import { authedFetch, getToken } from "../../../lib/api";
+import { authedFetch, hasAuthToken } from "../../../lib/api";
 
 type TutorBadge = {
   code: string;
@@ -83,10 +83,11 @@ function TutorsPageContent() {
   const [suggestions, setSuggestions] = useState<TutorSuggestion[]>([]);
   const [selectedTutorId, setSelectedTutorId] = useState("");
   const [reviews, setReviews] = useState<TutorReview[]>([]);
+  const [showAllTutors, setShowAllTutors] = useState(false);
 
   const selectedTutor = useMemo(() => tutors.find((item) => item.user_id === selectedTutorId) ?? null, [selectedTutorId, tutors]);
 
-  async function searchTutors(overrides?: Partial<{ subject: string; nameQuery: string }>) {
+  async function searchTutors(overrides?: Partial<{ subject: string; nameQuery: string }>): Promise<TutorEntry[]> {
     const query = buildQuery({
       nameQuery: overrides?.nameQuery ?? nameQuery,
       subject: overrides?.subject ?? subject,
@@ -99,6 +100,7 @@ function TutorsPageContent() {
     const response = await authedFetch<TutorEntry[]>(`/tutors/search?${query}`);
     setTutors(response);
     setSelectedTutorId((current) => current || response[0]?.user_id || "");
+    return response;
   }
 
   useEffect(() => {
@@ -107,25 +109,61 @@ function TutorsPageContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
+    let cancelled = false;
+
+    async function loadTutors() {
+      const authenticated = await hasAuthToken();
+      if (cancelled) {
+        return;
+      }
+      if (!authenticated) {
+        router.push("/login");
+        return;
+      }
+
+      const nextSubject = searchParams.get("subject") ?? "";
+      const preferredTutorId = searchParams.get("tutor_id") ?? searchParams.get("recommended") ?? "";
+
+      try {
+        const [searchResults, suggestionsResponse] = await Promise.all([
+          searchTutors({ subject: nextSubject }),
+          authedFetch<TutorSuggestion[]>("/tutors/suggestions?limit=6"),
+        ]);
+        if (!cancelled) {
+          setSuggestions(suggestionsResponse);
+
+          if (preferredTutorId) {
+            setShowAllTutors(true);
+            setSelectedTutorId(preferredTutorId);
+
+            if (!searchResults.some((tutor) => tutor.user_id === preferredTutorId)) {
+              const suggestedTutor = suggestionsResponse.find((tutor) => tutor.user_id === preferredTutorId);
+              if (suggestedTutor) {
+                setTutors((current) =>
+                  current.some((tutor) => tutor.user_id === suggestedTutor.user_id)
+                    ? current
+                    : [suggestedTutor, ...current],
+                );
+              }
+            }
+          }
+        }
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to load tutors.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
-    const nextSubject = searchParams.get("subject") ?? "";
+    void loadTutors();
 
-    Promise.all([
-      searchTutors({ subject: nextSubject }),
-      authedFetch<TutorSuggestion[]>("/tutors/suggestions?limit=6"),
-    ])
-      .then(([, suggestionsResponse]) => {
-        setSuggestions(suggestionsResponse);
-      })
-      .catch((error: unknown) => {
-        setStatusMessage(error instanceof Error ? error.message : "Failed to load tutors.");
-      })
-      .finally(() => setLoading(false));
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, searchParams]);
 
@@ -148,6 +186,19 @@ function TutorsPageContent() {
       setStatusMessage(error instanceof Error ? error.message : "Search failed.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleReachOut(peerUserId: string) {
+    try {
+      setStatusMessage("");
+      const convo = await authedFetch<{ conversation_id: string }>("/chat/conversations", {
+        method: "POST",
+        body: JSON.stringify({ peer_user_id: peerUserId }),
+      });
+      router.push(`/dashboard/chat?conversation=${convo.conversation_id}`);
+    } catch (error: unknown) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to start tutor conversation.");
     }
   }
 
@@ -258,22 +309,27 @@ function TutorsPageContent() {
 
         {suggestions.length > 0 && (
           <section className="mt-6">
-            <div className="mb-4 flex items-center gap-2">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
               <Sparkles size={18} className="text-[color:var(--accent-strong)]" />
               <h2 className="text-lg font-bold text-[color:var(--foreground)]">Suggested for You</h2>
               <span className="ml-1 rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--accent-strong)]">
                 Based on your weak topics
               </span>
+              </div>
+              <button
+                onClick={() => setShowAllTutors((current) => !current)}
+                className="secondary-button px-4 py-2 text-sm"
+              >
+                {showAllTutors ? "Hide All Tutors" : "View All Tutors"}
+              </button>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+            <div className="flex gap-4 overflow-x-auto pb-2">
               {suggestions.map((tutor) => (
                 <article
                   key={tutor.user_id}
-                  className="page-card-strong rounded-2xl p-5 cursor-pointer hover:-translate-y-0.5 transition-transform"
-                  onClick={() => {
-                    setSelectedTutorId(tutor.user_id);
-                    document.getElementById("tutor-list")?.scrollIntoView({ behavior: "smooth" });
-                  }}
+                  className="page-card-strong min-w-[290px] max-w-[320px] rounded-2xl p-5"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -308,13 +364,43 @@ function TutorsPageContent() {
                       </span>
                     )}
                   </div>
+
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedTutorId(tutor.user_id);
+                        setShowAllTutors(true);
+                        document.getElementById("tutor-list")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="secondary-button flex-1 px-3 py-2 text-xs"
+                    >
+                      View Profile
+                    </button>
+                    <button
+                      onClick={() => void handleReachOut(tutor.user_id)}
+                      className="primary-button inline-flex items-center gap-1.5 px-3 py-2 text-xs"
+                    >
+                      <MessageCircle size={13} />
+                      Reach Out
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
           </section>
         )}
 
-        <section id="tutor-list" className="mt-6 grid gap-6 xl:grid-cols-[0.62fr_0.38fr]">
+        <section id="tutor-list" className="mt-6">
+          <button
+            onClick={() => setShowAllTutors((current) => !current)}
+            className="secondary-button inline-flex items-center gap-2 px-4 py-2 text-sm"
+          >
+            {showAllTutors ? "Collapse Tutor Directory" : "Open Tutor Directory"}
+            {showAllTutors ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+
+          {showAllTutors && (
+          <div className="mt-4 grid gap-6 xl:grid-cols-[0.62fr_0.38fr]">
           <div className="space-y-4">
             {tutors.map((tutor) => (
               <article
@@ -361,6 +447,22 @@ function TutorsPageContent() {
                 <div className="mt-3 text-sm text-gray-600">
                   Courses: {tutor.current_courses.length ? tutor.current_courses.join(", ") : "No courses listed"}
                 </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => void handleReachOut(tutor.user_id)}
+                    className="primary-button inline-flex items-center gap-1.5 px-4 py-2 text-sm"
+                  >
+                    <MessageCircle size={14} />
+                    Reach Out
+                  </button>
+                  <button
+                    onClick={() => router.push(`/dashboard/virtual-sessions?subject=${encodeURIComponent(tutor.current_courses[0] ?? "")}`)}
+                    className="secondary-button px-4 py-2 text-sm"
+                  >
+                    Plan Session
+                  </button>
+                </div>
               </article>
             ))}
             {!loading && tutors.length === 0 && (
@@ -387,6 +489,8 @@ function TutorsPageContent() {
               )}
             </div>
           </aside>
+          </div>
+          )}
         </section>
         </div>
       </main>

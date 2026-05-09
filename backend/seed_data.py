@@ -23,6 +23,7 @@ from backend.models import (
     StudyGroup,
     StudyGroupMember,
     User,
+    UserCourse,
     UserProfile,
     UserSettings,
 )
@@ -227,7 +228,17 @@ def _wipe_existing_seed_data(db: Session) -> None:
         return
 
     seed_user_ids = [user.id for user in seed_users]
-    course_ids = [row[0] for row in db.query(Course.id).filter(Course.instructor_id.in_(seed_user_ids)).all()]
+    course_ids = [
+        row[0]
+        for row in db.query(Course.id)
+        .join(UserCourse, UserCourse.course_id == Course.id)
+        .filter(
+            (UserCourse.user_id.in_(seed_user_ids))
+            | (UserCourse.supplementary_tutor_user_id.in_(seed_user_ids))
+        )
+        .distinct()
+        .all()
+    ]
     session_ids = [
         row[0]
         for row in db.query(StudySession.id)
@@ -285,6 +296,7 @@ def _wipe_existing_seed_data(db: Session) -> None:
         )
 
     if course_ids:
+        db.query(UserCourse).filter(UserCourse.course_id.in_(course_ids)).delete(synchronize_session=False)
         db.query(Course).filter(Course.id.in_(course_ids)).delete(synchronize_session=False)
 
     db.query(UserSettings).filter(UserSettings.user_id.in_(seed_user_ids)).delete(synchronize_session=False)
@@ -356,20 +368,82 @@ def _seed_domain_data(db: Session, users: dict[str, User]) -> None:
     comp3035 = Course(
         title="COMP3035",
         description="Database systems and collaborative application design.",
-        instructor_id=alana.id,
     )
     math2400 = Course(
         title="MATH2400",
         description="Probability foundations and quantitative reasoning.",
-        instructor_id=kayla.id,
     )
     comp3901 = Course(
         title="COMP3901",
         description="Software engineering project delivery and teamwork.",
-        instructor_id=dwayne.id,
     )
     db.add_all([comp3035, math2400, comp3901])
     db.flush()
+
+    db.add_all(
+        [
+            UserCourse(
+                user_id=alana.id,
+                course_id=comp3035.id,
+                proficiency="strong",
+                specific_topics="query optimization, indexing",
+            ),
+            UserCourse(
+                user_id=dwayne.id,
+                course_id=comp3035.id,
+                proficiency="average",
+                specific_topics="joins and schema design",
+                supplementary_tutor_user_id=alana.id,
+            ),
+            UserCourse(
+                user_id=malik.id,
+                course_id=comp3035.id,
+                proficiency="weak",
+                specific_topics="normalization and SQL practice",
+                supplementary_tutor_user_id=alana.id,
+            ),
+            UserCourse(
+                user_id=kayla.id,
+                course_id=math2400.id,
+                proficiency="strong",
+                specific_topics="probability distributions",
+            ),
+            UserCourse(
+                user_id=alana.id,
+                course_id=math2400.id,
+                proficiency="average",
+                specific_topics="expected value and variance",
+                supplementary_tutor_user_id=kayla.id,
+            ),
+            UserCourse(
+                user_id=malik.id,
+                course_id=math2400.id,
+                proficiency="weak",
+                specific_topics="discrete random variables",
+                supplementary_tutor_user_id=kayla.id,
+            ),
+            UserCourse(
+                user_id=dwayne.id,
+                course_id=comp3901.id,
+                proficiency="strong",
+                specific_topics="agile delivery and retrospectives",
+            ),
+            UserCourse(
+                user_id=alana.id,
+                course_id=comp3901.id,
+                proficiency="average",
+                specific_topics="API planning and integrations",
+                supplementary_tutor_user_id=dwayne.id,
+            ),
+            UserCourse(
+                user_id=kayla.id,
+                course_id=comp3901.id,
+                proficiency="average",
+                specific_topics="project coordination",
+                supplementary_tutor_user_id=dwayne.id,
+            ),
+        ]
+    )
 
     session_one = StudySession(
         course_id=comp3035.id,

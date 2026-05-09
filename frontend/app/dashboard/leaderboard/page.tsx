@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookOpen, Flame, Star, Trophy, Users, Zap } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
-import { authedFetch, getToken } from "../../../lib/api";
+import { authedFetch, hasAuthToken } from "../../../lib/api";
 
 type TutorLeaderboardEntry = {
   rank: number;
@@ -84,22 +84,44 @@ export default function LeaderboardPage() {
   const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    let cancelled = false;
 
-    Promise.all([
-      authedFetch<TutorLeaderboardEntry[]>("/leaderboard/tutors?limit=20"),
-      authedFetch<StudentLeaderboardEntry[]>("/leaderboard/students?limit=20").catch(() => [] as StudentLeaderboardEntry[]),
-    ])
-      .then(([tutorRes, studentRes]) => {
+    async function loadLeaderboard() {
+      const authenticated = await hasAuthToken();
+      if (cancelled) {
+        return;
+      }
+      if (!authenticated) {
+        router.push("/login");
+        return;
+      }
+
+      try {
+        const [tutorRes, studentRes] = await Promise.all([
+          authedFetch<TutorLeaderboardEntry[]>("/leaderboard/tutors?limit=20"),
+          authedFetch<StudentLeaderboardEntry[]>("/leaderboard/students?limit=20").catch(() => [] as StudentLeaderboardEntry[]),
+        ]);
+        if (cancelled) {
+          return;
+        }
         setTutors(tutorRes);
         setStudents(studentRes);
-      })
-      .catch((err: unknown) => setStatusMessage(err instanceof Error ? err.message : "Failed to load leaderboard."))
-      .finally(() => setLoading(false));
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setStatusMessage(err instanceof Error ? err.message : "Failed to load leaderboard.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadLeaderboard();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const entries = tab === "tutors" ? tutors : students;

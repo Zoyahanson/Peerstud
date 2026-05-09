@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../../../components/sidebar";
-import { authedFetch, getToken } from "../../../lib/api";
+import { authedFetch, hasAuthToken } from "../../../lib/api";
 
 type ProgressPoint = {
   label: string;
@@ -29,6 +29,14 @@ type UserAnalytics = {
   }>;
 };
 
+type UserProgress = {
+  hosted_sessions: number;
+  joined_sessions: number;
+  study_groups_joined: number;
+  resources_shared: number;
+  current_streak_days: number;
+};
+
 type FriendProgress = {
   user_id: string;
   full_name: string | null;
@@ -47,24 +55,62 @@ export default function ProgressPage() {
   const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
+    let cancelled = false;
+
+    async function loadProgress() {
+      const authenticated = await hasAuthToken();
+      if (cancelled) {
+        return;
+      }
+      if (!authenticated) {
+        router.push("/login");
+        return;
+      }
+
+      try {
+        const [analyticsResult, friendsRes] = await Promise.all([
+          authedFetch<UserAnalytics>("/users/me/analytics").then((value) => ({ ok: true as const, value })).catch(() => ({ ok: false as const, value: null })),
+          authedFetch<FriendProgress[]>("/users/me/friends/analytics").catch(() => [] as FriendProgress[]),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        if (analyticsResult.ok && analyticsResult.value) {
+          setAnalytics(analyticsResult.value);
+        } else {
+          const progress = await authedFetch<UserProgress>("/users/me/progress");
+          if (cancelled) {
+            return;
+          }
+          setAnalytics({
+            hosted_sessions: progress.hosted_sessions,
+            joined_sessions: progress.joined_sessions,
+            study_groups_joined: progress.study_groups_joined,
+            resources_shared: progress.resources_shared,
+            current_streak_days: progress.current_streak_days,
+            milestones: [],
+            progress_points: [],
+            session_history: [],
+          });
+          setStatusMessage("Detailed analytics are still loading. Showing baseline progress instead.");
+        }
+        setFriendsProgress(friendsRes);
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to load analytics.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
-    Promise.all([
-      authedFetch<UserAnalytics>("/users/me/analytics"),
-      authedFetch<FriendProgress[]>("/users/me/friends/analytics").catch(() => [] as FriendProgress[]),
-    ])
-      .then(([analyticsRes, friendsRes]) => {
-        setAnalytics(analyticsRes);
-        setFriendsProgress(friendsRes);
-      })
-      .catch((error: unknown) => {
-        setStatusMessage(error instanceof Error ? error.message : "Failed to load analytics.");
-      })
-      .finally(() => setLoading(false));
+    void loadProgress();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const maxValue = useMemo(() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { authedFetch, getToken } from "../lib/api";
+import { authedFetch, hasAuthToken } from "../lib/api";
 
 type UserSettings = {
   desktop_reminders: boolean;
@@ -42,15 +42,15 @@ export default function ReminderPulse() {
       return;
     }
 
-    const token = getToken();
-    if (!token || Notification.permission !== "granted") {
-      return;
-    }
-
     let cancelled = false;
 
     async function loadReminderCandidates() {
       try {
+        const authenticated = await hasAuthToken();
+        if (!authenticated || cancelled || Notification.permission !== "granted") {
+          return;
+        }
+
         const [settings, sessions] = await Promise.all([
           authedFetch<UserSettings>("/users/me/settings"),
           authedFetch<SessionItem[]>("/sessions"),

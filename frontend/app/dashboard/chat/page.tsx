@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { MessageCircle, Plus, Search, Send, Users, X } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
-import { authedFetch, getToken } from "../../../lib/api";
+import { authedFetch, hasAuthToken } from "../../../lib/api";
 
 const CHAT_POLL_INTERVAL_MS = 3000;
 
@@ -41,6 +41,8 @@ export default function ChatPage({
   onTabChange?: (t: "chat" | "groups") => void;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const conversationFromQuery = searchParams.get("conversation") ?? "";
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string>("");
@@ -83,28 +85,48 @@ export default function ChatPage({
   }, []);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    let cancelled = false;
 
-    Promise.all([
-      authedFetch<ChatContact[]>("/chat/contacts"),
-      authedFetch<ChatConversation[]>("/chat/conversations"),
-    ])
-      .then(([contactResponse, conversationResponse]) => {
+    async function loadChat() {
+      const authenticated = await hasAuthToken();
+      if (cancelled) {
+        return;
+      }
+      if (!authenticated) {
+        router.push("/login");
+        return;
+      }
+
+      try {
+        const [contactResponse, conversationResponse] = await Promise.all([
+          authedFetch<ChatContact[]>("/chat/contacts"),
+          authedFetch<ChatConversation[]>("/chat/conversations"),
+        ]);
+        if (cancelled) {
+          return;
+        }
         setContacts(contactResponse);
         setConversations(conversationResponse);
         if (conversationResponse[0]?.conversation_id) {
-          setSelectedConversationId(conversationResponse[0].conversation_id);
+          setSelectedConversationId(conversationFromQuery || conversationResponse[0].conversation_id);
         }
-      })
-      .catch((error: unknown) => {
-        setStatusMessage(error instanceof Error ? error.message : "Failed to load chat.");
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to load chat.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadChat();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationFromQuery, router]);
 
   useEffect(() => {
     if (!selectedConversationId) {

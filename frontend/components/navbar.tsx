@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Bell, ChevronDown, ChevronUp, LogOut, Menu, Search, User, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 
 export default function Navbar() {
@@ -12,7 +12,11 @@ export default function Navbar() {
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  const logoOnlyRoutes = ["/", "/login", "/register", "/onboarding"];
+  const logoOnlyNav = logoOnlyRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 
   useEffect(() => {
     function syncAuthState() {
@@ -41,6 +45,21 @@ export default function Navbar() {
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
+
+  if (logoOnlyNav) {
+    return (
+      <nav className="sticky top-0 z-40 border-b border-[color:var(--border)] bg-[rgba(255,255,255,0.88)] backdrop-blur-xl">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[color:var(--green)] via-[color:var(--accent)] to-[color:var(--navy)]" />
+        <div className="mx-auto flex max-w-screen-2xl items-center px-4 py-4 sm:px-6 lg:px-8">
+          <Link href="/" className="flex items-center text-[1.45rem] font-black tracking-tight text-[color:var(--foreground)]">
+            <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-[color:var(--green)]" />
+            <span>PeerStud</span>
+            <span className="ml-2 inline-block h-2.5 w-2.5 rounded-full bg-[color:var(--navy)]" />
+          </Link>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <nav className="sticky top-0 z-40 border-b border-[color:var(--border)] bg-[rgba(255,255,255,0.88)] backdrop-blur-xl">

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Sidebar from "../../../../../components/sidebar";
-import { authedFetch, getToken } from "../../../../../lib/api";
+import { authedFetch, hasAuthToken } from "../../../../../lib/api";
 import { buildDefaultVirtualRoomUrl } from "../../../../../lib/virtual-room";
 
 type SessionItem = {
@@ -25,24 +25,44 @@ export default function VirtualRoomPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    let cancelled = false;
 
-    authedFetch<SessionItem[]>("/sessions")
-      .then((sessions) => {
+    async function loadRoom() {
+      const authenticated = await hasAuthToken();
+      if (cancelled) {
+        return;
+      }
+      if (!authenticated) {
+        router.push("/login");
+        return;
+      }
+
+      try {
+        const sessions = await authedFetch<SessionItem[]>("/sessions");
+        if (cancelled) {
+          return;
+        }
         const matched = sessions.find((item) => item.id === sessionId) ?? null;
         if (!matched) {
           setStatusMessage("Session not found.");
         }
         setSessionItem(matched);
-      })
-      .catch((error: unknown) => {
-        setStatusMessage(error instanceof Error ? error.message : "Failed to load room.");
-      })
-      .finally(() => setLoading(false));
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to load room.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadRoom();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router, sessionId]);
 
   const roomUrl = useMemo(() => {

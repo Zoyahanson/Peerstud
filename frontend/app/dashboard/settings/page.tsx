@@ -1,83 +1,75 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BellRing, CalendarDays, MonitorSmartphone } from "lucide-react";
+import { BellRing, MonitorSmartphone, SlidersHorizontal } from "lucide-react";
 import Sidebar from "../../../components/sidebar";
-import { authedFetch, getToken } from "../../../lib/api";
+import { authedFetch, hasAuthToken } from "../../../lib/api";
 
 type UserSettings = {
   email_alerts: boolean;
-  calendar_auto_meet: boolean;
+  adaptive_layout: boolean;
   desktop_reminders: boolean;
   reminder_minutes_before: number;
-};
-
-type CalendarStatus = {
-  linked: boolean;
-  google_email: string | null;
+  weekly_progress_digest: boolean;
+  focus_mode_enabled: boolean;
+  show_online_status: boolean;
 };
 
 export default function SettingsPage() {
   const router = useRouter();
   const [emailAlerts, setEmailAlerts] = useState(true);
-  const [calendarAutoMeet, setCalendarAutoMeet] = useState(true);
+  const [adaptiveLayout, setAdaptiveLayout] = useState(true);
   const [desktopReminders, setDesktopReminders] = useState(true);
   const [reminderMinutesBefore, setReminderMinutesBefore] = useState(30);
-  const [calendarStatus, setCalendarStatus] = useState<CalendarStatus>({ linked: false, google_email: null });
+  const [weeklyProgressDigest, setWeeklyProgressDigest] = useState(true);
+  const [focusModeEnabled, setFocusModeEnabled] = useState(false);
+  const [showOnlineStatus, setShowOnlineStatus] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [busyLinking, setBusyLinking] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
 
-  const waitForOAuthMessage = useCallback(() => {
-    return new Promise<{ code: string | null; state: string | null; error: string | null }>((resolve, reject) => {
-      const timeoutId = window.setTimeout(() => reject(new Error("OAuth flow timed out.")), 180000);
+  useEffect(() => {
+    let cancelled = false;
 
-      function onMessage(event: MessageEvent) {
-        if (event.origin !== window.location.origin) {
-          return;
-        }
-
-        if (!event.data || event.data.type !== "google-calendar-oauth") {
-          return;
-        }
-
-        window.clearTimeout(timeoutId);
-        window.removeEventListener("message", onMessage);
-        resolve({
-          code: event.data.code ?? null,
-          state: event.data.state ?? null,
-          error: event.data.error ?? null,
-        });
+    async function loadSettings() {
+      const authenticated = await hasAuthToken();
+      if (cancelled) {
+        return;
+      }
+      if (!authenticated) {
+        router.push("/login");
+        return;
       }
 
-      window.addEventListener("message", onMessage);
-    });
-  }, []);
-
-  useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-
-    Promise.all([
-      authedFetch<UserSettings>("/users/me/settings"),
-      authedFetch<CalendarStatus>("/users/me/google-calendar/status"),
-    ])
-      .then(([settings, googleCalendar]) => {
+      try {
+        const settings = await authedFetch<UserSettings>("/users/me/settings");
+        if (cancelled) {
+          return;
+        }
         setEmailAlerts(settings.email_alerts);
-        setCalendarAutoMeet(settings.calendar_auto_meet);
+        setAdaptiveLayout(settings.adaptive_layout);
         setDesktopReminders(settings.desktop_reminders);
         setReminderMinutesBefore(settings.reminder_minutes_before);
-        setCalendarStatus(googleCalendar);
-      })
-      .catch((error: unknown) => {
-        setStatusMessage(error instanceof Error ? error.message : "Failed to load settings.");
-      })
-      .finally(() => setLoading(false));
+        setWeeklyProgressDigest(settings.weekly_progress_digest);
+        setFocusModeEnabled(settings.focus_mode_enabled);
+        setShowOnlineStatus(settings.show_online_status);
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to load settings.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   async function handleSave() {
@@ -88,65 +80,26 @@ export default function SettingsPage() {
         method: "PUT",
         body: JSON.stringify({
           email_alerts: emailAlerts,
-          calendar_auto_meet: calendarAutoMeet,
-          adaptive_layout: false,
+          adaptive_layout: adaptiveLayout,
           desktop_reminders: desktopReminders,
           reminder_minutes_before: reminderMinutesBefore,
+          weekly_progress_digest: weeklyProgressDigest,
+          focus_mode_enabled: focusModeEnabled,
+          show_online_status: showOnlineStatus,
         }),
       });
       setEmailAlerts(updated.email_alerts);
-      setCalendarAutoMeet(updated.calendar_auto_meet);
+      setAdaptiveLayout(updated.adaptive_layout);
       setDesktopReminders(updated.desktop_reminders);
       setReminderMinutesBefore(updated.reminder_minutes_before);
+      setWeeklyProgressDigest(updated.weekly_progress_digest);
+      setFocusModeEnabled(updated.focus_mode_enabled);
+      setShowOnlineStatus(updated.show_online_status);
       setStatusMessage("Settings saved.");
     } catch (error: unknown) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to save settings.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleLinkCalendar() {
-    try {
-      setBusyLinking(true);
-      setStatusMessage("");
-      const start = await authedFetch<{ authorization_url: string }>("/users/me/google-calendar/link/start", {
-        method: "POST",
-      });
-      const authWindow = window.open(start.authorization_url, "google-calendar-link", "width=520,height=720");
-      if (!authWindow) {
-        throw new Error("Failed to open OAuth window. Allow pop-ups and try again.");
-      }
-
-      const oauthPayload = await waitForOAuthMessage();
-      if (oauthPayload.error || !oauthPayload.code || !oauthPayload.state) {
-        throw new Error(oauthPayload.error || "OAuth callback did not return a valid code.");
-      }
-
-      const linked = await authedFetch<CalendarStatus>("/users/me/google-calendar/link/complete", {
-        method: "POST",
-        body: JSON.stringify({ code: oauthPayload.code, state: oauthPayload.state }),
-      });
-      setCalendarStatus(linked);
-      setStatusMessage("Google Calendar and Meet linking completed.");
-    } catch (error: unknown) {
-      setStatusMessage(error instanceof Error ? error.message : "Failed to link Google Calendar.");
-    } finally {
-      setBusyLinking(false);
-    }
-  }
-
-  async function handleUnlinkCalendar() {
-    try {
-      setBusyLinking(true);
-      setStatusMessage("");
-      const unlinked = await authedFetch<CalendarStatus>("/users/me/google-calendar/link", { method: "DELETE" });
-      setCalendarStatus(unlinked);
-      setStatusMessage("Google Calendar disconnected.");
-    } catch (error: unknown) {
-      setStatusMessage(error instanceof Error ? error.message : "Failed to unlink Google Calendar.");
-    } finally {
-      setBusyLinking(false);
     }
   }
 
@@ -158,43 +111,13 @@ export default function SettingsPage() {
         <div className="page-content">
           <div className="page-header max-w-3xl">
             <h1 className="page-title">Settings</h1>
-            <p className="page-subtitle">Preferences, reminders, and calendar sync.</p>
+            <p className="page-subtitle">Preferences, reminders, and personalized study controls.</p>
           </div>
 
           {loading && <p className="mb-4 text-sm text-[color:var(--ink-muted)]">Loading settings...</p>}
           {statusMessage && <p className="mb-4 text-sm text-[color:var(--accent-strong)]">{statusMessage}</p>}
 
           <section className="asym-grid items-start">
-            <div className="space-y-5">
-              <article className="glass-panel-strong rounded-[2rem] p-6 sm:p-7">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-2xl bg-[color:var(--accent-soft)] p-3 text-[color:var(--accent-strong)]">
-                    <CalendarDays size={22} />
-                  </div>
-                  <div className="flex-1">
-                    <h2 className="text-xl font-semibold text-[color:var(--foreground)]">Google Calendar and Meet</h2>
-                    <p className="mt-2 text-sm leading-6 text-[color:var(--ink-muted)]">{calendarStatus.linked ? `Connected as ${calendarStatus.google_email ?? "your Google account"}.` : "Connect Google Calendar."}</p>
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button
-                        onClick={handleLinkCalendar}
-                        disabled={busyLinking}
-                        className="primary-button px-5 py-3 text-sm hover:-translate-y-0.5 disabled:opacity-60"
-                      >
-                        {busyLinking ? "Linking..." : "Link Google Account"}
-                      </button>
-                      <button
-                        onClick={handleUnlinkCalendar}
-                        disabled={busyLinking || !calendarStatus.linked}
-                        className="rounded-full border border-[color:var(--border)] bg-white/80 px-5 py-3 text-sm font-semibold text-[color:var(--foreground)] hover:-translate-y-0.5 disabled:opacity-60"
-                      >
-                        Unlink
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </article>
-            </div>
-
             <div className="space-y-5">
               <article className="glass-panel-strong rounded-[2rem] p-6">
                 <div className="flex items-start gap-4">
@@ -214,6 +137,11 @@ export default function SettingsPage() {
                     <label className="flex items-center justify-between rounded-[1.4rem] border border-[color:var(--border)] bg-white/70 p-4">
                       <span className="text-sm font-medium text-[color:var(--foreground)]">Desktop/browser reminders</span>
                       <input type="checkbox" checked={desktopReminders} onChange={(event) => setDesktopReminders(event.target.checked)} />
+                    </label>
+
+                    <label className="flex items-center justify-between rounded-[1.4rem] border border-[color:var(--border)] bg-white/70 p-4">
+                      <span className="text-sm font-medium text-[color:var(--foreground)]">Weekly progress digest</span>
+                      <input type="checkbox" checked={weeklyProgressDigest} onChange={(event) => setWeeklyProgressDigest(event.target.checked)} />
                     </label>
 
                     <label className="block rounded-[1.4rem] border border-[color:var(--border)] bg-white/70 p-4">
@@ -241,11 +169,29 @@ export default function SettingsPage() {
                   </div>
                   <div className="w-full space-y-4">
                     <label className="flex items-center justify-between rounded-[1.4rem] border border-[color:var(--border)] bg-white/70 p-4">
-                      <span className="text-sm font-medium text-[color:var(--foreground)]">Auto-generate Meet links</span>
+                      <span className="text-sm font-medium text-[color:var(--foreground)]">Adaptive layout tuning</span>
                       <input
                         type="checkbox"
-                        checked={calendarAutoMeet}
-                        onChange={(event) => setCalendarAutoMeet(event.target.checked)}
+                        checked={adaptiveLayout}
+                        onChange={(event) => setAdaptiveLayout(event.target.checked)}
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between rounded-[1.4rem] border border-[color:var(--border)] bg-white/70 p-4">
+                      <span className="text-sm font-medium text-[color:var(--foreground)]">Focus mode for low-distraction study</span>
+                      <input
+                        type="checkbox"
+                        checked={focusModeEnabled}
+                        onChange={(event) => setFocusModeEnabled(event.target.checked)}
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between rounded-[1.4rem] border border-[color:var(--border)] bg-white/70 p-4">
+                      <span className="text-sm font-medium text-[color:var(--foreground)]">Show my online status to peers</span>
+                      <input
+                        type="checkbox"
+                        checked={showOnlineStatus}
+                        onChange={(event) => setShowOnlineStatus(event.target.checked)}
                       />
                     </label>
 
@@ -261,6 +207,22 @@ export default function SettingsPage() {
                     >
                       {saving ? "Saving..." : "Save Settings"}
                     </button>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div className="space-y-5">
+              <article className="glass-panel rounded-[2rem] p-6">
+                <div className="flex items-start gap-4">
+                  <div className="rounded-2xl bg-[rgba(198,231,255,0.55)] p-3 text-[color:var(--accent-strong)]">
+                    <SlidersHorizontal size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-[color:var(--foreground)]">Settings Updated</h2>
+                    <p className="mt-2 text-sm leading-6 text-[color:var(--ink-muted)]">
+                      Google calendar linking has been removed. Session and reminder behavior now runs through in-app controls only.
+                    </p>
                   </div>
                 </div>
               </article>

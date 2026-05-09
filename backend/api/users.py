@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import chain
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from backend.api.schemas import (
     FriendAddRequest,
     FriendEntryResponse,
+    FriendProgressResponse,
     SchoolEmailPolicyResponse,
     ProgressPointResponse,
     SessionHistoryItemResponse,
@@ -104,7 +105,14 @@ def get_my_progress(
 ) -> UserProgressResponse:
     profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
     hosted_sessions = len(current_user.hosted_sessions)
-    joined_session_rows = db.query(SessionParticipant).filter(SessionParticipant.user_id == current_user.id).all()
+    joined_session_rows = (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.user_id == current_user.id,
+            SessionParticipant.status == "confirmed",
+        )
+        .all()
+    )
     joined_sessions = len(joined_session_rows)
     joined_group_rows = db.query(StudyGroupMember).filter(StudyGroupMember.user_id == current_user.id).all()
     resources_shared = db.query(Resource).filter(Resource.uploaded_by_user_id == current_user.id).count()
@@ -135,7 +143,14 @@ def get_my_analytics(
 ) -> UserAnalyticsResponse:
     profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
     hosted_rows = db.query(StudySession).filter(StudySession.host_user_id == current_user.id).all()
-    joined_rows = db.query(SessionParticipant).filter(SessionParticipant.user_id == current_user.id).all()
+    joined_rows = (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.user_id == current_user.id,
+            SessionParticipant.status == "confirmed",
+        )
+        .all()
+    )
     joined_group_rows = db.query(StudyGroupMember).filter(StudyGroupMember.user_id == current_user.id).all()
     resources_shared = db.query(Resource).filter(Resource.uploaded_by_user_id == current_user.id).count()
 
@@ -215,7 +230,10 @@ def get_my_analytics(
             for row in (
                 db.query(SessionParticipant)
                 .join(StudySession, StudySession.id == SessionParticipant.session_id)
-                .filter(SessionParticipant.user_id == current_user.id)
+                .filter(
+                    SessionParticipant.user_id == current_user.id,
+                    SessionParticipant.status == "confirmed",
+                )
                 .order_by(StudySession.start_time.desc())
                 .limit(6)
                 .all()
@@ -389,6 +407,15 @@ def get_my_settings(
         adaptive_layout=settings.adaptive_layout,
         desktop_reminders=settings.desktop_reminders,
         reminder_minutes_before=settings.reminder_minutes_before,
+        weekly_progress_digest=settings.weekly_progress_digest,
+        focus_mode_enabled=settings.focus_mode_enabled,
+        show_online_status=settings.show_online_status,
+        onboarding_completed=settings.onboarding_completed,
+        availability_slots=settings.availability_slots,
+        matching_preference=settings.matching_preference,
+        study_style_preference=settings.study_style_preference,
+        preferred_session_length_minutes=settings.preferred_session_length_minutes,
+        include_graduate_tutors=settings.include_graduate_tutors,
     )
 
 
@@ -403,6 +430,15 @@ def update_my_settings(
     settings.adaptive_layout = payload.adaptive_layout
     settings.desktop_reminders = payload.desktop_reminders
     settings.reminder_minutes_before = payload.reminder_minutes_before
+    settings.weekly_progress_digest = payload.weekly_progress_digest
+    settings.focus_mode_enabled = payload.focus_mode_enabled
+    settings.show_online_status = payload.show_online_status
+    settings.onboarding_completed = payload.onboarding_completed
+    settings.availability_slots = payload.availability_slots
+    settings.matching_preference = payload.matching_preference
+    settings.study_style_preference = payload.study_style_preference
+    settings.preferred_session_length_minutes = payload.preferred_session_length_minutes
+    settings.include_graduate_tutors = payload.include_graduate_tutors
     db.add(settings)
     db.commit()
     db.refresh(settings)
@@ -411,6 +447,15 @@ def update_my_settings(
         adaptive_layout=settings.adaptive_layout,
         desktop_reminders=settings.desktop_reminders,
         reminder_minutes_before=settings.reminder_minutes_before,
+        weekly_progress_digest=settings.weekly_progress_digest,
+        focus_mode_enabled=settings.focus_mode_enabled,
+        show_online_status=settings.show_online_status,
+        onboarding_completed=settings.onboarding_completed,
+        availability_slots=settings.availability_slots,
+        matching_preference=settings.matching_preference,
+        study_style_preference=settings.study_style_preference,
+        preferred_session_length_minutes=settings.preferred_session_length_minutes,
+        include_graduate_tutors=settings.include_graduate_tutors,
     )
 
 
@@ -467,6 +512,56 @@ def list_friends(
             )
         )
     return result
+
+
+@router.get("/me/friends/analytics", response_model=list[FriendProgressResponse])
+def list_friends_analytics(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[FriendProgressResponse]:
+    friendships = db.query(Friendship).filter(Friendship.user_id == current_user.id).all()
+    analytics: list[FriendProgressResponse] = []
+
+    for friendship in friendships:
+        friend_user = db.query(User).filter(User.id == friendship.friend_user_id).first()
+        if not friend_user:
+            continue
+
+        joined_sessions = (
+            db.query(SessionParticipant)
+            .filter(
+                SessionParticipant.user_id == friend_user.id,
+                SessionParticipant.status == "confirmed",
+            )
+            .count()
+        )
+        resources_shared = db.query(Resource).filter(Resource.uploaded_by_user_id == friend_user.id).count()
+        group_rows = db.query(StudyGroupMember).filter(StudyGroupMember.user_id == friend_user.id).all()
+
+        recent_activity_dates = [item.joined_at for item in group_rows]
+        recent_activity_dates += [
+            item.joined_at
+            for item in db.query(SessionParticipant)
+            .filter(
+                SessionParticipant.user_id == friend_user.id,
+                SessionParticipant.status == "confirmed",
+            )
+            .all()
+        ]
+
+        analytics.append(
+            FriendProgressResponse(
+                user_id=friend_user.id,
+                full_name=friend_user.full_name,
+                email=friend_user.email,
+                joined_sessions=joined_sessions,
+                resources_shared=resources_shared,
+                current_streak_days=_calculate_current_streak_days(recent_activity_dates),
+                study_groups_joined=len(group_rows),
+            )
+        )
+
+    return analytics
 
 
 @router.post("/me/friends", status_code=status.HTTP_201_CREATED, response_model=FriendEntryResponse)

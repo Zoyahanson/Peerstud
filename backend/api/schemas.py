@@ -106,6 +106,15 @@ class UserSettingsResponse(BaseModel):
     adaptive_layout: bool
     desktop_reminders: bool
     reminder_minutes_before: int
+    weekly_progress_digest: bool
+    focus_mode_enabled: bool
+    show_online_status: bool
+    onboarding_completed: bool = False
+    availability_slots: list[str] = Field(default_factory=list)
+    matching_preference: str = "peers_only"
+    study_style_preference: str = "both"
+    preferred_session_length_minutes: int = 60
+    include_graduate_tutors: bool = False
 
 
 class UserSettingsUpdate(BaseModel):
@@ -113,6 +122,32 @@ class UserSettingsUpdate(BaseModel):
     adaptive_layout: bool
     desktop_reminders: bool
     reminder_minutes_before: int = Field(ge=5, le=1440)
+    weekly_progress_digest: bool = True
+    focus_mode_enabled: bool = False
+    show_online_status: bool = True
+    onboarding_completed: bool = False
+    availability_slots: list[str] = Field(default_factory=list, max_length=200)
+    matching_preference: str = Field(default="peers_only", max_length=30)
+    study_style_preference: str = Field(default="both", max_length=20)
+    preferred_session_length_minutes: int = Field(default=60, ge=30, le=180)
+    include_graduate_tutors: bool = False
+
+
+class UserCourseSelection(BaseModel):
+    course_id: UUID
+    proficiency: str = Field(default="average", max_length=20)
+    strong_topics: list[str] = Field(default_factory=list, max_length=20)
+    need_topics: list[str] = Field(default_factory=list, max_length=20)
+    supplementary_tutor_user_id: UUID | None = None
+
+
+class UserCourseSelectionResponse(BaseModel):
+    course_id: UUID
+    title: str
+    proficiency: str
+    strong_topics: list[str]
+    need_topics: list[str]
+    supplementary_tutor_user_id: UUID | None
 
 
 class SessionCreate(BaseModel):
@@ -184,7 +219,9 @@ class CourseSummaryResponse(BaseModel):
     id: UUID
     title: str
     description: str | None
-    instructor_id: UUID
+    instructor_id: UUID | None = None
+    student_count: int = 0
+    supplementary_tutor_count: int = 0
     sessions_count: int
     resources_count: int
 
@@ -280,6 +317,16 @@ class FriendEntryResponse(BaseModel):
     email: EmailStr
     mutual_sessions: int
     streak_days: int
+
+
+class FriendProgressResponse(BaseModel):
+    user_id: UUID
+    full_name: str | None
+    email: EmailStr
+    joined_sessions: int
+    resources_shared: int
+    current_streak_days: int
+    study_groups_joined: int
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, UserMinus, UserPlus, Users } from "lucide-react";
-import { authedFetch, getToken } from "../../lib/api";
+import { authedFetch, hasAuthToken } from "../../lib/api";
 
 type UserCore = {
   id: string;
@@ -124,20 +124,29 @@ export default function ProfilePage() {
   }, [friendSearch]);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    let cancelled = false;
 
-    setLoading(true);
-    setFriendsLoading(true);
-    Promise.all([
-      authedFetch<UserCore>("/users/me"),
-      authedFetch<UserProfile>("/users/me/profile"),
-      authedFetch<FriendEntry[]>("/users/me/friends").catch(() => [] as FriendEntry[]),
-    ])
-      .then(([user, profile, friendsRes]) => {
+    async function loadProfile() {
+      const authenticated = await hasAuthToken();
+      if (cancelled) {
+        return;
+      }
+      if (!authenticated) {
+        router.push("/login");
+        return;
+      }
+
+      setLoading(true);
+      setFriendsLoading(true);
+      try {
+        const [user, profile, friendsRes] = await Promise.all([
+          authedFetch<UserCore>("/users/me"),
+          authedFetch<UserProfile>("/users/me/profile"),
+          authedFetch<FriendEntry[]>("/users/me/friends").catch(() => [] as FriendEntry[]),
+        ]);
+        if (cancelled) {
+          return;
+        }
         setFullName(profile.full_name ?? user.full_name ?? "");
         setEmail(user.email);
         setYearOfStudy(profile.year_of_study ?? "");
@@ -156,14 +165,23 @@ export default function ProfilePage() {
         setBio(profile.bio ?? "");
         setInterests(profile.interests ?? "");
         setFriends(friendsRes);
-      })
-      .catch((error: unknown) => {
-        setStatusMessage(error instanceof Error ? error.message : "Failed to load profile.");
-      })
-      .finally(() => {
-        setLoading(false);
-        setFriendsLoading(false);
-      });
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to load profile.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setFriendsLoading(false);
+        }
+      }
+    }
+
+    void loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   async function handleSearchUsers() {

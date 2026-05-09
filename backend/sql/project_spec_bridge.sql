@@ -53,6 +53,9 @@ ALTER TABLE user_profiles
 ALTER TABLE user_profiles
     ADD COLUMN IF NOT EXISTS need_vector vector(1536);
 
+ALTER TABLE courses
+    ALTER COLUMN instructor_id DROP NOT NULL;
+
 -- Existing year_of_study is VARCHAR in backend. Keep it as-is.
 -- Existing credibility_score already exists and is reused.
 
@@ -68,6 +71,33 @@ CREATE TABLE IF NOT EXISTS user_courses (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, course_id)
 );
+
+ALTER TABLE user_courses
+    ADD COLUMN IF NOT EXISTS supplementary_tutor_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE user_courses
+    ADD COLUMN IF NOT EXISTS strong_topics VARCHAR(120)[] NOT NULL DEFAULT '{}';
+
+ALTER TABLE user_courses
+    ADD COLUMN IF NOT EXISTS need_topics VARCHAR(120)[] NOT NULL DEFAULT '{}';
+
+ALTER TABLE user_settings
+    ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE user_settings
+    ADD COLUMN IF NOT EXISTS availability_slots VARCHAR(40)[] NOT NULL DEFAULT '{}';
+
+ALTER TABLE user_settings
+    ADD COLUMN IF NOT EXISTS matching_preference VARCHAR(30) NOT NULL DEFAULT 'peers_only';
+
+ALTER TABLE user_settings
+    ADD COLUMN IF NOT EXISTS study_style_preference VARCHAR(20) NOT NULL DEFAULT 'both';
+
+ALTER TABLE user_settings
+    ADD COLUMN IF NOT EXISTS preferred_session_length_minutes INTEGER NOT NULL DEFAULT 60;
+
+ALTER TABLE user_settings
+    ADD COLUMN IF NOT EXISTS include_graduate_tutors BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS match_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -136,6 +166,7 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_need_vector
 
 CREATE INDEX IF NOT EXISTS idx_user_courses_user ON user_courses(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_courses_course ON user_courses(course_id);
+CREATE INDEX IF NOT EXISTS idx_user_courses_tutor ON user_courses(supplementary_tutor_user_id);
 CREATE INDEX IF NOT EXISTS idx_match_history_a ON match_history(student_a);
 CREATE INDEX IF NOT EXISTS idx_match_history_b ON match_history(student_b);
 CREATE INDEX IF NOT EXISTS idx_match_history_score ON match_history(final_score DESC);

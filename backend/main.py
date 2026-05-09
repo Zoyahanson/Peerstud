@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from backend.api.catalog import router as catalog_router
 from backend.api.chat import router as chat_router
@@ -38,6 +39,23 @@ def startup() -> None:
 @app.get("/")
 def root() -> dict[str, str]:
     return {"message": "PeerStud Backend Running"}
+
+
+@app.get("/health")
+def health() -> dict[str, bool | str]:
+    db_connected = False
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+            db_connected = True
+    except Exception:
+        db_connected = False
+
+    return {
+        "backend": True,
+        "database": db_connected,
+        "status": "ok" if db_connected else "degraded",
+    }
 
 
 app.include_router(users_router)

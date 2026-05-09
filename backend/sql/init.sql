@@ -35,8 +35,22 @@ CREATE TABLE IF NOT EXISTS courses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(200) NOT NULL,
     description TEXT,
-    instructor_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    instructor_id UUID REFERENCES users(id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS user_courses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    proficiency VARCHAR(20) NOT NULL DEFAULT 'average'
+        CHECK (proficiency IN ('strong', 'average', 'weak')),
+    specific_topics TEXT,
+    strong_topics VARCHAR(120)[] NOT NULL DEFAULT '{}',
+    need_topics VARCHAR(120)[] NOT NULL DEFAULT '{}',
+    supplementary_tutor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, course_id)
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -119,6 +133,9 @@ CREATE TABLE IF NOT EXISTS study_group_members (
 );
 
 CREATE INDEX IF NOT EXISTS idx_study_groups_course_id ON study_groups(course_id);
+CREATE INDEX IF NOT EXISTS idx_user_courses_user_id ON user_courses(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_courses_course_id ON user_courses(course_id);
+CREATE INDEX IF NOT EXISTS idx_user_courses_supp_tutor ON user_courses(supplementary_tutor_user_id);
 CREATE INDEX IF NOT EXISTS idx_study_group_members_group_id ON study_group_members(group_id);
 CREATE INDEX IF NOT EXISTS idx_session_participants_session_id ON session_participants(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_ratings_session_id ON session_ratings(session_id);
@@ -130,6 +147,15 @@ CREATE TABLE IF NOT EXISTS user_settings (
     adaptive_layout BOOLEAN NOT NULL DEFAULT TRUE,
     desktop_reminders BOOLEAN NOT NULL DEFAULT TRUE,
     reminder_minutes_before INTEGER NOT NULL DEFAULT 30,
+    weekly_progress_digest BOOLEAN NOT NULL DEFAULT TRUE,
+    focus_mode_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    show_online_status BOOLEAN NOT NULL DEFAULT TRUE,
+    onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    availability_slots VARCHAR(40)[] NOT NULL DEFAULT '{}',
+    matching_preference VARCHAR(30) NOT NULL DEFAULT 'peers_only',
+    study_style_preference VARCHAR(20) NOT NULL DEFAULT 'both',
+    preferred_session_length_minutes INTEGER NOT NULL DEFAULT 60,
+    include_graduate_tutors BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
