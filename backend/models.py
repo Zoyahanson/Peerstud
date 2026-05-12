@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ARRAY, Boolean, DateTime, Float, ForeignKey, String, Text, func, text
+from sqlalchemy import Column, ARRAY, Boolean, DateTime, Float, ForeignKey, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -109,6 +109,9 @@ class Course(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    faculty: Mapped[str | None] = mapped_column(String(200), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Deprecated ownership field retained for backward compatibility with older databases.
     instructor_id: Mapped[str | None] = mapped_column(
@@ -363,6 +366,8 @@ class UserSettings(Base):
         index=True,
     )
     email_alerts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    calendar_auto_meet: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    calendar_sync_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     adaptive_layout: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     desktop_reminders: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     reminder_minutes_before: Mapped[int] = mapped_column(nullable=False, default=30)

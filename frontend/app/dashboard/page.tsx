@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CalendarClock, Flame, GraduationCap, Lightbulb, Rocket, Star, Users } from "lucide-react";
+import { ArrowRight, CalendarClock, Flame, GraduationCap, Lightbulb, Rocket, Star } from "lucide-react";
 import Sidebar from "../../components/sidebar";
 import { authedFetch, hasAuthToken } from "../../lib/api";
 
@@ -27,17 +27,11 @@ type SessionItem = {
   average_rating?: number | null;
 };
 
-type MatchItem = {
-  user_id: string;
-  full_name: string | null;
-  match_score: number | null;
-  complementarity_score: number | null;
-};
-
 type TutorSuggestion = {
   user_id: string;
   full_name: string | null;
   match_score: number;
+  match_reason?: string;
 };
 
 type StudyGroupItem = {
@@ -88,7 +82,7 @@ export default function Dashboard() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [upcomingSessions, setUpcomingSessions] = useState<SessionItem[]>([]);
   const [allSessions, setAllSessions] = useState<SessionItem[]>([]);
-  const [matches, setMatches] = useState<MatchItem[]>([]);
+  const [tutorSuggestions, setTutorSuggestions] = useState<TutorSuggestion[]>([]);
   const [studyGroups, setStudyGroups] = useState<StudyGroupItem[]>([]);
   const [resources, setResources] = useState<ResourceItem[]>([]);
   const [myCourses, setMyCourses] = useState<UserCourse[]>([]);
@@ -113,7 +107,7 @@ export default function Dashboard() {
           profileResponse,
           settingsResponse,
           sessionsResponse,
-          matchesResponse,
+          suggestionsResponse,
           groupsResponse,
           resourcesResponse,
           coursesResponse,
@@ -135,14 +129,7 @@ export default function Dashboard() {
         setSettings(settingsResponse);
         setAllSessions(sessionsResponse);
         setUpcomingSessions(pickUpcomingSessions(sessionsResponse, Date.now()));
-        setMatches(
-          matchesResponse.map((item) => ({
-            user_id: item.user_id,
-            full_name: item.full_name,
-            match_score: item.match_score,
-            complementarity_score: null,
-          })),
-        );
+        setTutorSuggestions(suggestionsResponse);
         setStudyGroups(groupsResponse.slice(0, 4));
         setResources(resourcesResponse.slice(0, 4));
         setMyCourses(coursesResponse);
@@ -193,12 +180,10 @@ export default function Dashboard() {
   const meFromLeaderboard = leaderboard.find((entry) => entry.user_id === profile?.user_id);
   const streakDays = meFromLeaderboard?.streak_days ?? 7;
 
-  const recommendedMatches = matches;
-
   const progressBars = [
     { label: "Weekly consistency", value: Math.min(100, sessionsThisWeek * 20) },
     { label: "Subject mastery", value: Math.min(100, subjectsMastered * 25) },
-    { label: "Collaboration momentum", value: Math.min(100, recommendedMatches.length * 24) },
+    { label: "Collaboration momentum", value: Math.min(100, tutorSuggestions.length * 24) },
   ];
 
   const quickActions = [
@@ -304,35 +289,35 @@ export default function Dashboard() {
               <article className="glass-panel-strong rounded-[1.8rem] p-6">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
-                    <p className="section-kicker">Recommended Matches</p>
-                    <h2 className="mt-1 text-2xl font-bold text-[color:var(--foreground)]">Strong peer fits</h2>
+                    <p className="section-kicker">Suggested Tutors</p>
+                    <h2 className="mt-1 text-2xl font-bold text-[color:var(--foreground)]">Recommended tutors</h2>
                   </div>
-                  <Users className="text-[color:var(--accent-strong)]" size={20} />
+                  <Star className="text-[color:var(--accent-strong)]" size={20} />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {recommendedMatches.map((match) => (
+                  {tutorSuggestions.map((tutor) => (
                     <button
-                      key={match.user_id}
+                      key={tutor.user_id}
                       onClick={() =>
                         router.push(
-                          `/dashboard/tutors?tutor_id=${encodeURIComponent(match.user_id)}&recommended=${encodeURIComponent(match.user_id)}`,
+                          `/dashboard/tutors?tutor_id=${encodeURIComponent(tutor.user_id)}&recommended=${encodeURIComponent(tutor.user_id)}`,
                         )
                       }
                       className="rounded-[1.2rem] border border-[color:var(--border)] bg-white/80 p-4 text-left transition hover:border-[color:var(--accent)] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
                     >
-                      <p className="font-semibold text-[color:var(--foreground)]">{match.full_name ?? "Peer Tutor"}</p>
+                      <p className="font-semibold text-[color:var(--foreground)]">{tutor.full_name ?? "Tutor"}</p>
                       <p className="mt-2 text-xs uppercase tracking-[0.15em] text-[color:var(--ink-muted)]">Match score</p>
                       <p className="mt-1 text-xl font-black text-[color:var(--accent-strong)]">
-                        {Math.round((match.match_score ?? 0.85) * 100)}%
+                        {Math.round((tutor.match_score ?? 0.0) * 100)}%
                       </p>
-                      <p className="mt-1 text-xs text-[color:var(--ink-muted)]">
-                        Complementarity {Math.round((match.complementarity_score ?? 0.84) * 100)}%
+                      <p className="mt-1 text-xs text-[color:var(--ink-muted)] truncate">
+                        {tutor.match_reason ?? "Recommended based on your learning needs."}
                       </p>
                     </button>
                   ))}
-                  {recommendedMatches.length === 0 && (
+                  {tutorSuggestions.length === 0 && (
                     <p className="rounded-[1rem] bg-white/80 px-4 py-3 text-sm text-[color:var(--ink-muted)]">
-                      No tutor matches yet. Visit Find Tutors to browse all available tutors.
+                      No tutor suggestions yet. Try updating your profile or search filters.
                     </p>
                   )}
                 </div>

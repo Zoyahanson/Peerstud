@@ -25,6 +25,11 @@ export default function Home() {
             </Link>
           </div>
 
+          <div className="mt-3">
+            <Link href="/login" className="text-sm font-medium text-[color:var(--accent-strong)] hover:underline">
+              Already have an account? Log in
+            </Link>
+          </div>
           <div className="mt-10 rounded-[1.6rem] border border-[color:var(--border)] bg-white/85 p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--ink-muted)]">Matching Visualization</p>
             <div className="mt-4 grid gap-4 md:grid-cols-3">

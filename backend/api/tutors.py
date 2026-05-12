@@ -59,6 +59,11 @@ def _course_overlap(user_courses: list[str], tutor_courses: list[str]) -> float:
     return len(user_set & tutor_set) / len(user_set)
 
 
+def _calibrate_score(raw_score: float, min_score: float = 0.25, max_score: float = 0.95) -> float:
+    calibrated = min_score + (max_score - min_score) * raw_score
+    return min(1.0, max(0.0, calibrated))
+
+
 def _bayesian_credibility(score: float, count: int) -> float:
     """Bayesian-smoothed rating normalised to [0, 1].
 
@@ -286,7 +291,7 @@ def suggest_tutors(
         same_faculty = bool(my_faculty and tutor_faculty and my_faculty == tutor_faculty)
         has_upcoming = int(upcoming_sessions_count or 0) > 0
 
-        score = _composite_score(
+        raw_score = _composite_score(
             vector_sim=vector_sim,
             keyword_jaccard=keyword_jaccard,
             course_overlap=course_ov,
@@ -296,6 +301,7 @@ def suggest_tutors(
             same_campus=same_campus,
             same_faculty=same_faculty,
         )
+        score = _calibrate_score(raw_score)
 
         reason = _build_match_reason(
             vector_sim=vector_sim,
