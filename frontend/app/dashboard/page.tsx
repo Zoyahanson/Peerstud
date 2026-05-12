@@ -42,6 +42,7 @@ type TutorSuggestion = {
 
 type StudyGroupItem = {
   id: string;
+  course_id: string;
   course_title: string;
   topic_focus: string;
   member_count: number;
@@ -51,6 +52,7 @@ type StudyGroupItem = {
 
 type ResourceItem = {
   id: string;
+  course_id: string;
   title: string;
   resource_type: string;
   created_at: string;
