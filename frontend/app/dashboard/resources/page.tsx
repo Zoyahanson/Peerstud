@@ -1177,8 +1177,8 @@ export default function ResourcesPage() {
       </main>
 
       {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(9,20,35,0.58)] p-3">
-          <div className="w-full max-w-4xl rounded-[1.8rem] border border-[color:var(--border)] bg-white p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(9,20,35,0.58)] p-3" onClick={closeUploadModal}>
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-[1.8rem] border border-[color:var(--border)] bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold text-[color:var(--foreground)]">Upload Resources</h2>
@@ -1406,8 +1406,8 @@ export default function ResourcesPage() {
       )}
 
       {showShareModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(9,20,35,0.58)] p-3">
-          <div className="w-full max-w-2xl rounded-[1.8rem] border border-[color:var(--border)] bg-white p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(9,20,35,0.58)] p-3" onClick={closeShareModal}>
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[1.8rem] border border-[color:var(--border)] bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold text-[color:var(--foreground)]">Share Resource</h2>

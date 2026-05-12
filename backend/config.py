@@ -26,6 +26,11 @@ class Settings:
         "http://127.0.0.1:5500,http://localhost:5500,http://localhost:3000",
     )
     cors_allowed_origin_regex: str = os.getenv("CORS_ALLOWED_ORIGIN_REGEX", r"^https://.*\.vercel\.app$")
+    smtp_host: str = os.getenv("EMAIL_SMTP_HOST", "smtp.gmail.com")
+    smtp_port: int = int(os.getenv("EMAIL_SMTP_PORT", "587"))
+    smtp_user: str = os.getenv("EMAIL_SMTP_USER", "")
+    smtp_password: str = os.getenv("EMAIL_SMTP_PASSWORD", "")
+    smtp_from: str = os.getenv("EMAIL_FROM", "")
 
     @property
     def cors_allowed_origins(self) -> list[str]:

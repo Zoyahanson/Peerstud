@@ -76,10 +76,6 @@ export default function Navbar() {
           </Link>
 
           <div className={`hidden items-center gap-2 md:flex ${desktopCollapsed ? "hidden" : ""}`}>
-            <Link href="/" className="rounded-full px-4 py-2 text-sm font-medium text-[color:var(--ink-muted)] hover:bg-white/70 hover:text-[color:var(--foreground)]">
-              Home
-            </Link>
-
             {loggedIn && (
               <Link href="/dashboard" className="rounded-full px-4 py-2 text-sm font-medium text-[color:var(--ink-muted)] hover:bg-white/70 hover:text-[color:var(--foreground)]">
                 Dashboard
@@ -184,9 +180,6 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div id="site-mobile-menu" className="border-t border-[color:var(--border)] bg-white px-4 py-4 md:hidden">
           <div className="mx-auto flex max-w-screen-2xl flex-col gap-2">
-            <Link href="/" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-white">
-              Home
-            </Link>
             {loggedIn ? (
               <>
                 <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] hover:bg-gray-50">

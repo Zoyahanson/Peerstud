@@ -91,6 +91,8 @@ export default function OnboardingPage() {
   const [preferredSessionLengthMinutes, setPreferredSessionLengthMinutes] = useState(60);
 
   const [settingsSnapshot, setSettingsSnapshot] = useState<UserSettings | null>(null);
+  // Raw text while the user is typing — only parsed into arrays on blur
+  const [topicDrafts, setTopicDrafts] = useState<Record<string, { strong: string; need: string }>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -385,37 +387,68 @@ export default function OnboardingPage() {
               {selectedCourses.map((course) => (
                 <div key={course.course_id} className="rounded-2xl border border-[color:var(--border)] bg-white/75 p-4">
                   <h3 className="text-sm font-bold text-[color:var(--foreground)]">{course.title}</h3>
-                  <p className="mt-2 text-xs text-[color:var(--ink-muted)]">Net Centric: Need Help {">"} Expert</p>
+                  <div className="mt-2 flex items-center justify-between text-xs text-[color:var(--ink-muted)]">
+                    <span>Need Help</span>
+                    <span className="font-semibold capitalize text-[color:var(--accent-strong)]">{course.proficiency}</span>
+                    <span>Expert</span>
+                  </div>
                   <input
                     type="range"
                     min={0}
                     max={2}
+                    step={1}
                     value={course.proficiency === "weak" ? 0 : course.proficiency === "average" ? 1 : 2}
-                    onChange={(event) => {
-                      const value = Number(event.target.value);
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
                       updateCourseSelection(course.course_id, {
-                        proficiency: value === 0 ? "weak" : value === 1 ? "average" : "strong",
+                        proficiency: v === 0 ? "weak" : v === 1 ? "average" : "strong",
                       });
                     }}
-                    className="mt-2 w-full"
+                    className="mt-1 w-full accent-[color:var(--accent)]"
                   />
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="space-y-1">
-                      <span className="text-xs text-[color:var(--ink-muted)]">Topics you're strong in (comma separated)</span>
+                      <span className="text-xs text-[color:var(--ink-muted)]">Topics you&apos;re strong in (comma separated)</span>
                       <input
                         className="field-shell"
-                        value={course.strong_topics.join(", ")}
-                        onChange={(event) => updateCourseSelection(course.course_id, { strong_topics: parseTopicInput(event.target.value) })}
-                        placeholder="indexes, joins"
+                        value={topicDrafts[course.course_id]?.strong ?? course.strong_topics.join(", ")}
+                        onChange={(e) =>
+                          setTopicDrafts((prev) => ({
+                            ...prev,
+                            [course.course_id]: { strong: e.target.value, need: prev[course.course_id]?.need ?? course.need_topics.join(", ") },
+                          }))
+                        }
+                        onBlur={(e) => {
+                          const parsed = parseTopicInput(e.target.value);
+                          updateCourseSelection(course.course_id, { strong_topics: parsed });
+                          setTopicDrafts((prev) => ({
+                            ...prev,
+                            [course.course_id]: { ...prev[course.course_id], strong: parsed.join(", ") },
+                          }));
+                        }}
+                        placeholder="e.g. indexes, joins"
                       />
                     </label>
                     <label className="space-y-1">
                       <span className="text-xs text-[color:var(--ink-muted)]">Topics you need help with (comma separated)</span>
                       <input
                         className="field-shell"
-                        value={course.need_topics.join(", ")}
-                        onChange={(event) => updateCourseSelection(course.course_id, { need_topics: parseTopicInput(event.target.value) })}
-                        placeholder="normalization, constraints"
+                        value={topicDrafts[course.course_id]?.need ?? course.need_topics.join(", ")}
+                        onChange={(e) =>
+                          setTopicDrafts((prev) => ({
+                            ...prev,
+                            [course.course_id]: { strong: prev[course.course_id]?.strong ?? course.strong_topics.join(", "), need: e.target.value },
+                          }))
+                        }
+                        onBlur={(e) => {
+                          const parsed = parseTopicInput(e.target.value);
+                          updateCourseSelection(course.course_id, { need_topics: parsed });
+                          setTopicDrafts((prev) => ({
+                            ...prev,
+                            [course.course_id]: { ...prev[course.course_id], need: parsed.join(", ") },
+                          }));
+                        }}
+                        placeholder="e.g. normalization, constraints"
                       />
                     </label>
                   </div>

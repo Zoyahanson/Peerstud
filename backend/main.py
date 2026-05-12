@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from backend.api.catalog import router as catalog_router
+from backend.api.otp import router as otp_router
 from backend.api.chat import router as chat_router
 from backend.api.leaderboard import router as leaderboard_router
 from backend.api.matches import router as matches_router
@@ -58,6 +59,7 @@ def health() -> dict[str, bool | str]:
     }
 
 
+app.include_router(otp_router)
 app.include_router(users_router)
 app.include_router(matches_router)
 app.include_router(sessions_router)
