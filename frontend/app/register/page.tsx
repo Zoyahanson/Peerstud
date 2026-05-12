@@ -46,10 +46,10 @@ export default function Register() {
 
     try {
       setSubmitting(true);
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
+        password: password,
         options: {
-          shouldCreateUser: true,
           data: name.trim() ? { full_name: name.trim() } : undefined,
         },
       });
@@ -85,16 +85,10 @@ export default function Register() {
       const { data, error } = await supabase.auth.verifyOtp({
         email: email.trim().toLowerCase(),
         token: otp.trim(),
-        type: "email",
+        type: "signup",
       });
       if (error) {
         setError(error.message || "Invalid OTP code.");
-        return;
-      }
-
-      const { error: passwordError } = await supabase.auth.updateUser({ password });
-      if (passwordError) {
-        setError(passwordError.message || "Verified email, but failed to set password.");
         return;
       }
 
