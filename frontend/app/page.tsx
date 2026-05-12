@@ -22,20 +22,11 @@ export default function Home() {
                 Find a Peer Tutor
               </Link>
 
-              <Link href="/register" className="secondary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5" >
+              <Link href="/register" className="secondary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
                 Become a Tutor
               </Link>
             </div>
 
-            <div className="flex justify-center">
-              <Link href="/login" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-[color:var(--accent)] px-8 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:opacity-90">
-                Login
-              </Link>
-            </div>
-          </div>
-          
-
-          <div className="mt-3">
             <Link href="/login" className="text-sm font-medium text-[color:var(--accent-strong)] hover:underline">
               Already have an account? Log in
             </Link>
