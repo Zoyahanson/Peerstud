@@ -23,7 +23,12 @@ export default function Home() {
             <Link href="/register" className="secondary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
               Become a Tutor
             </Link>
+            <Link href="/login" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-[color:var(--border)] bg-white/80 px-6 text-base font-semibold text-[color:var(--foreground)] transition hover:-translate-y-0.5 hover:bg-white"
+            >
+              Login
+            </Link>
           </div>
+          
 
           <div className="mt-10 rounded-[1.6rem] border border-[color:var(--border)] bg-white/85 p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--ink-muted)]">Matching Visualization</p>
