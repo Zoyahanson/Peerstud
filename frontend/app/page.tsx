@@ -27,8 +27,8 @@ export default function Home() {
               </Link>
             </div>
 
-            <div>
-              <Link href="/login" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-green-600 px-6 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:bg-green-700">
+            <div className="flex justify-center">
+              <Link href="/login" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-[color:var(--accent)] px-8 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:opacity-90">
                 Login
               </Link>
             </div>
