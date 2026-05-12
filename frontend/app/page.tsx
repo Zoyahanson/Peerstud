@@ -16,14 +16,24 @@ export default function Home() {
             Match with peers who can help where you are weak, while you support where they are strong. Build balanced sessions for real progress.
           </p>
 
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-            <Link href="/register" className="primary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
-              Find a Peer Tutor
-            </Link>
-            <Link href="/register" className="secondary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
-              Become a Tutor
-            </Link>
+          <div className="mt-7 flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href="/register" className="primary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
+                Find a Peer Tutor
+              </Link>
+
+              <Link href="/register" className="secondary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5" >
+                Become a Tutor
+              </Link>
+            </div>
+
+            <div className="flex justify-center">
+              <Link href="/login" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-[color:var(--accent)] px-8 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:opacity-90">
+                Login
+              </Link>
+            </div>
           </div>
+          
 
           <div className="mt-3">
             <Link href="/login" className="text-sm font-medium text-[color:var(--accent-strong)] hover:underline">
