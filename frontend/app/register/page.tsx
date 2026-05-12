@@ -23,7 +23,23 @@ export default function Register() {
     loadSchoolEmailPolicy().then((policy) => setAllowedDomains(policy.allowed_domains));
   }, []);
 
-  const handleSendOtp = async () => {
+  async function redirectAfterAuth(accessToken: string) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/me/settings`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (res.ok) {
+        const settings = (await res.json()) as { onboarding_completed?: boolean };
+        router.push(settings.onboarding_completed ? "/dashboard" : "/onboarding");
+        return;
+      }
+    } catch {
+      // fall through to default
+    }
+    router.push("/onboarding");
+  }
+
+  const handleSignUp = async () => {
     setError("");
     setMessage("");
 
@@ -40,27 +56,36 @@ export default function Register() {
     }
 
     if (!supabase || !isSupabaseConfigured()) {
-      setError("Supabase auth is not configured yet. Add your Supabase URL and anon key.");
+      setError("Supabase auth is not configured. Add your Supabase URL and anon key.");
       return;
     }
 
     try {
       setSubmitting(true);
-      const { error } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
-        password: password,
+        password,
         options: {
           data: name.trim() ? { full_name: name.trim() } : undefined,
         },
       });
-      if (error) {
-        setError(error.message || "Could not send verification code.");
+
+      if (signUpError) {
+        setError(signUpError.message || "Could not create account.");
         return;
       }
+
+      // Supabase auto-confirmed (email confirmation disabled in dashboard)
+      if (data.session?.access_token) {
+        await redirectAfterAuth(data.session.access_token);
+        return;
+      }
+
+      // Email confirmation required — OTP was sent
       setVerificationStage("otp");
-      setMessage("A 6-digit OTP was sent to your organization email. Enter it to verify your account.");
+      setMessage("A 6-digit code was sent to your organization email. Enter it below to verify.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send verification code.");
+      setError(err instanceof Error ? err.message : "Could not create account.");
     } finally {
       setSubmitting(false);
     }
@@ -71,48 +96,37 @@ export default function Register() {
     setMessage("");
 
     if (!otp.trim()) {
-      setError("Enter the OTP code from your email.");
+      setError("Enter the 6-digit code from your email.");
       return;
     }
 
     if (!supabase || !isSupabaseConfigured()) {
-      setError("Supabase auth is not configured yet. Add your Supabase URL and anon key.");
+      setError("Supabase auth is not configured.");
       return;
     }
 
     try {
       setSubmitting(true);
-      const { data, error } = await supabase.auth.verifyOtp({
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
         email: email.trim().toLowerCase(),
         token: otp.trim(),
         type: "signup",
       });
-      if (error) {
-        setError(error.message || "Invalid OTP code.");
+
+      if (verifyError) {
+        setError(verifyError.message || "Invalid or expired code. Try resending.");
         return;
       }
 
       if (data.session?.access_token) {
-        const settingsResponse = await fetch(`${API_BASE_URL}/users/me/settings`, {
-          headers: {
-            Authorization: `Bearer ${data.session.access_token}`,
-          },
-        });
-
-        if (settingsResponse.ok) {
-          const settings = (await settingsResponse.json()) as { onboarding_completed?: boolean };
-          router.push(settings.onboarding_completed ? "/dashboard" : "/onboarding");
-          return;
-        }
-
-        router.push("/onboarding");
+        await redirectAfterAuth(data.session.access_token);
         return;
       }
 
-      setMessage("Email verified. You can now sign in.");
+      setMessage("Email verified. Redirecting to sign in...");
       window.setTimeout(() => router.push("/login"), 1200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "OTP verification failed.");
+      setError(err instanceof Error ? err.message : "Verification failed.");
     } finally {
       setSubmitting(false);
     }
@@ -122,12 +136,9 @@ export default function Register() {
     <main className="page-main flex items-center justify-center px-6">
       <div className="page-card w-full max-w-md p-10">
         <h2 className="text-3xl font-bold mb-3 text-center text-gray-950">Create Account</h2>
+        <p className="text-sm text-gray-700 mb-5 text-center">Organization email registration.</p>
 
-        <p className="text-sm text-gray-700 mb-5 text-center">Organization email registration with OTP verification.</p>
-
-        {error && (
-          <p className="text-red-600 text-sm mb-4">{error}</p>
-        )}
+        {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
         {message && <p className="text-green-700 text-sm mb-4">{message}</p>}
 
         {verificationStage === "details" ? (
@@ -139,7 +150,6 @@ export default function Register() {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-
             <input
               type="email"
               placeholder="Organization email"
@@ -147,49 +157,48 @@ export default function Register() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
-
             <input
               type="password"
-              placeholder="Password"
+              placeholder="Password (min 8 characters)"
               className="field-shell mb-6"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-
             <button
-              onClick={handleSendOtp}
+              onClick={handleSignUp}
               disabled={submitting}
               className="primary-button w-full p-3 transition disabled:opacity-60"
             >
-              {submitting ? "Sending OTP..." : "Send OTP"}
+              {submitting ? "Creating account..." : "Create Account"}
             </button>
           </>
         ) : (
           <>
             <p className="text-xs text-gray-700 mb-4">
-              Enter the OTP sent to {email.trim().toLowerCase()} to verify your organization account.
+              Enter the 6-digit code sent to <strong>{email.trim().toLowerCase()}</strong>.
             </p>
             <input
               type="text"
               inputMode="numeric"
-              placeholder="Enter OTP code"
+              placeholder="Enter 6-digit code"
+              maxLength={6}
               className="field-shell mb-4"
               value={otp}
-              onChange={(e) => setOtp(e.target.value)}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
             />
             <button
               onClick={handleVerifyOtp}
               disabled={submitting}
               className="primary-button w-full p-3 transition disabled:opacity-60"
             >
-              {submitting ? "Verifying OTP..." : "Verify OTP"}
+              {submitting ? "Verifying..." : "Verify Code"}
             </button>
             <button
-              onClick={handleSendOtp}
+              onClick={handleSignUp}
               disabled={submitting}
               className="mt-3 w-full rounded-xl border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--ink-muted)] transition hover:bg-[color:var(--background-alt)] disabled:opacity-60"
             >
-              Resend OTP
+              Resend code
             </button>
           </>
         )}
