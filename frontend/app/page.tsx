@@ -16,17 +16,22 @@ export default function Home() {
             Match with peers who can help where you are weak, while you support where they are strong. Build balanced sessions for real progress.
           </p>
 
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-            <Link href="/register" className="primary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
-              Find a Peer Tutor
-            </Link>
-            <Link href="/register" className="secondary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
-              Become a Tutor
-            </Link>
-            <Link href="/login" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-[color:var(--border)] bg-white/80 px-6 text-base font-semibold text-[color:var(--foreground)] transition hover:-translate-y-0.5 hover:bg-white"
-            >
-              Login
-            </Link>
+          <div className="mt-7 flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href="/register" className="primary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5">
+                Find a Peer Tutor
+              </Link>
+
+              <Link href="/register" className="secondary-button inline-flex min-h-12 items-center justify-center px-6 text-base hover:-translate-y-0.5" >
+                Become a Tutor
+              </Link>
+            </div>
+
+            <div>
+              <Link href="/login" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-green-600 px-6 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:bg-green-700">
+                Login
+              </Link>
+            </div>
           </div>
           
 
